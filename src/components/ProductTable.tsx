@@ -417,7 +417,7 @@ export function ProductTable({
               : "border-slate-700 text-slate-300 hover:bg-slate-800"
           }`}
         >
-          ⚙ Marge
+          ⚙ AMZ Gebühren
         </button>
         <button
           onClick={() => setShowFilters((v) => !v)}
