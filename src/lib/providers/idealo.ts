@@ -125,13 +125,14 @@ class IdealoProvider implements ComparisonProvider {
     }
 
     const json = (await res.json()) as unknown;
+    // Response may be a bare array, { data: [...] } or { success, data: [...] }.
     const items: IdealoSearchItem[] = Array.isArray(json)
       ? (json as IdealoSearchItem[])
       : ((json as { data?: IdealoSearchItem[] })?.data ?? []);
 
     if (!items.length) return null;
 
-    // Pick the cheapest plausible offer among the top matches.
+    // Case 1: the search result already carries a price → cheapest match.
     let best: { euro: number; item: IdealoSearchItem } | null = null;
     for (const item of items.slice(0, 5)) {
       const euro =
@@ -141,16 +142,70 @@ class IdealoProvider implements ComparisonProvider {
       }
     }
 
-    if (!best) return null;
+    if (best) {
+      return {
+        source: this.source,
+        priceCents: Math.round(best.euro * 100),
+        url: best.item.url ?? null,
+        inStock: true,
+        matchedName: best.item.name ?? null,
+        mock: false,
+      };
+    }
 
-    return {
-      source: this.source,
-      priceCents: Math.round(best.euro * 100),
-      url: best.item.url ?? null,
-      inStock: true,
-      matchedName: best.item.name ?? null,
-      mock: false,
-    };
+    // Case 2: search returned no price (e.g. only itemId/name/url). Fetch the
+    // product detail for the top match to read its best available offer price.
+    const top = items[0];
+    if (top?.itemId) {
+      const euro = await this.fetchProductPrice(top);
+      if (euro != null) {
+        return {
+          source: this.source,
+          priceCents: Math.round(euro * 100),
+          url: top.url ?? null,
+          inStock: true,
+          matchedName: top.name ?? null,
+          mock: false,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /** Resolve a price via POST /api/idealo/product for a single item. */
+  private async fetchProductPrice(
+    item: IdealoSearchItem,
+  ): Promise<number | null> {
+    try {
+      const res = await fetch(`${env.idealo.apiUrl}/api/idealo/product`, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify({
+          itemId: item.itemId,
+          itemType: item.itemType ?? "PRODUCT",
+          country: env.idealo.country,
+        }),
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as unknown;
+      // Detail may be under { data: { item: {...} } } or a flat object.
+      const detail =
+        (json as { data?: { item?: unknown }; item?: unknown })?.data?.item ??
+        (json as { data?: unknown })?.data ??
+        json;
+      const d = detail as {
+        bestAvailableOffer?: { prices?: unknown };
+        pricesByCondition?: unknown;
+      };
+      return (
+        extractEuro(d?.bestAvailableOffer?.prices) ??
+        extractEuro(d?.pricesByCondition)
+      );
+    } catch {
+      return null;
+    }
   }
 
   private mockOffer(query: ComparisonQuery): ComparisonOffer {
