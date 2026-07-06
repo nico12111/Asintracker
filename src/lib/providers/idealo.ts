@@ -22,14 +22,16 @@ import { mockAmazonPriceCents, mockComparisonPriceCents } from "./mock";
  */
 const IDEALO_DATA = {
   // Base host, e.g. https://idealo-data.p.rapidapi.com  (aus IDEALO_API_URL)
+  // Confirmed from RapidAPI "Code Snippet" for search-by-gtin.
   paths: {
-    searchByGtin: process.env.IDEALO_PATH_GTIN?.trim() || "/search/gtin",
-    searchByTerm: process.env.IDEALO_PATH_TERM?.trim() || "/search/term",
-    poll: process.env.IDEALO_PATH_POLL?.trim() || "/search/results",
+    searchByGtin: process.env.IDEALO_PATH_GTIN?.trim() || "/search-by-gtin",
+    searchByTerm: process.env.IDEALO_PATH_TERM?.trim() || "/search-by-term",
+    // Poll base; the job id is appended as a path segment: /poll-job/<jobId>
+    poll: process.env.IDEALO_PATH_POLL?.trim() || "/poll-job",
   },
   fields: {
-    gtin: "gtin",
-    term: "term",
+    // The start endpoints take the search value in a "values" field.
+    value: "values",
     country: "country",
     jobId: "job_id",
   },
@@ -141,9 +143,9 @@ function collectOffers(node: unknown, acc: RawOffer[], depth = 0): void {
   }
 }
 
-function buildHeaders(json: boolean): Record<string, string> {
+function buildHeaders(contentType?: string): Record<string, string> {
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (json) headers["Content-Type"] = "application/json";
+  if (contentType) headers["Content-Type"] = contentType;
   if (env.idealo.apiKey) {
     const value =
       env.idealo.keyHeader.toLowerCase() === "authorization"
@@ -197,23 +199,24 @@ class IdealoProvider implements ComparisonProvider {
 
   /** Kick off a search job and return its id. */
   private async startSearch(
-    kind: "gtin" | "term" | "id",
+    kind: "gtin" | "term",
     value: string,
   ): Promise<string | null> {
     const path =
       kind === "gtin"
         ? IDEALO_DATA.paths.searchByGtin
         : IDEALO_DATA.paths.searchByTerm;
-    const field =
-      kind === "gtin" ? IDEALO_DATA.fields.gtin : IDEALO_DATA.fields.term;
+
+    // The API expects an x-www-form-urlencoded body with a lowercase country.
+    const body = new URLSearchParams({
+      [IDEALO_DATA.fields.value]: value,
+      [IDEALO_DATA.fields.country]: env.idealo.country.toLowerCase(),
+    }).toString();
 
     const res = await fetch(`${env.idealo.apiUrl}${path}`, {
       method: "POST",
-      headers: buildHeaders(true),
-      body: JSON.stringify({
-        [field]: value,
-        [IDEALO_DATA.fields.country]: env.idealo.country,
-      }),
+      headers: buildHeaders("application/x-www-form-urlencoded"),
+      body,
       cache: "no-store",
     });
     if (!res.ok) {
@@ -225,15 +228,16 @@ class IdealoProvider implements ComparisonProvider {
     return data.job_id ?? data.jobId ?? null;
   }
 
-  /** Poll the session endpoint until it stops reporting "pending". */
+  /** Poll /poll-job/<jobId> until it stops reporting "pending". */
   private async pollResults(jobId: string): Promise<unknown | null> {
-    const url = new URL(`${env.idealo.apiUrl}${IDEALO_DATA.paths.poll}`);
-    url.searchParams.set(IDEALO_DATA.fields.jobId, jobId);
+    const pollUrl = `${env.idealo.apiUrl}${IDEALO_DATA.paths.poll}/${encodeURIComponent(
+      jobId,
+    )}`;
 
     for (let attempt = 0; attempt < IDEALO_DATA.poll.maxAttempts; attempt++) {
-      const res = await fetch(url, {
+      const res = await fetch(pollUrl, {
         method: "GET",
-        headers: buildHeaders(false),
+        headers: buildHeaders("application/json"),
         cache: "no-store",
       });
       if (res.ok) {
