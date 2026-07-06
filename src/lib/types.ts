@@ -15,12 +15,19 @@ export interface AmazonProductData {
   eans: string[];
   /** Amazon Best Sellers Rank in the main category. */
   salesRank: number | null;
-  /** Number of BSR drops in the last 30 days (a sales-velocity proxy). */
+  /** BSR drops in the last 30 / 90 days (sales-velocity proxy). */
   salesRankDrops30: number | null;
+  salesRankDrops90: number | null;
   /** Buy-Box / current sell price in cents, or null if unknown. */
   priceCents: number | null;
-  /** 30-day average Buy-Box/sell price in cents. */
+  /** 30-day / 90-day average Buy-Box/sell price in cents. */
   avgPrice30Cents: number | null;
+  avgPrice90Cents: number | null;
+  /** Star rating (0–5) and number of reviews. */
+  rating: number | null;
+  reviewCount: number | null;
+  /** Number of current new offers. */
+  offerCountNew: number | null;
   /** True when the values are demo/mock data (no API key configured). */
   mock: boolean;
 }

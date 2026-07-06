@@ -17,8 +17,10 @@ import {
 interface KeepaStats {
   current?: number[];
   avg30?: number[];
+  avg90?: number[];
   buyBoxPrice?: number;
   salesRankDrops30?: number;
+  salesRankDrops90?: number;
 }
 
 interface KeepaProduct {
@@ -126,11 +128,25 @@ class KeepaProvider implements AmazonProvider {
         eans: [],
         salesRank: null,
         salesRankDrops30: null,
+        salesRankDrops90: null,
         priceCents: null,
         avgPrice30Cents: null,
+        avgPrice90Cents: null,
+        rating: null,
+        reviewCount: null,
+        offerCountNew: null,
         mock: false,
       };
     }
+
+    const cur = product.stats?.current;
+    const ratingRaw = cur?.[16];
+    const rating =
+      typeof ratingRaw === "number" && ratingRaw > 0 ? ratingRaw / 10 : null;
+    const reviewCount =
+      typeof cur?.[17] === "number" && cur[17] >= 0 ? cur[17] : null;
+    const offerCountNew =
+      typeof cur?.[11] === "number" && cur[11] >= 0 ? cur[11] : null;
 
     const eans = [...(product.eanList ?? []), ...(product.upcList ?? [])].filter(
       Boolean,
@@ -146,8 +162,13 @@ class KeepaProvider implements AmazonProvider {
       eans,
       salesRank: pickSalesRank(product),
       salesRankDrops30: product.stats?.salesRankDrops30 ?? null,
+      salesRankDrops90: product.stats?.salesRankDrops90 ?? null,
       priceCents: pickPriceCents(product.stats),
       avgPrice30Cents: pickFromArray(product.stats?.avg30),
+      avgPrice90Cents: pickFromArray(product.stats?.avg90),
+      rating,
+      reviewCount,
+      offerCountNew,
       mock: false,
     };
   }
@@ -164,8 +185,13 @@ class KeepaProvider implements AmazonProvider {
       eans: [ean],
       salesRank: mockSalesRank(asin),
       salesRankDrops30: 20 + (mockSalesRank(asin) % 400),
+      salesRankDrops90: 60 + (mockSalesRank(asin) % 1000),
       priceCents: mockAmazonPriceCents(asin),
       avgPrice30Cents: Math.round(mockAmazonPriceCents(asin) * 1.04),
+      avgPrice90Cents: Math.round(mockAmazonPriceCents(asin) * 1.07),
+      rating: 3.5 + (mockSalesRank(asin) % 15) / 10,
+      reviewCount: 5 + (mockSalesRank(asin) % 5000),
+      offerCountNew: 1 + (mockSalesRank(asin) % 25),
       mock: true,
     };
   }

@@ -4,7 +4,6 @@ import type {
   ComparisonOffer,
   ComparisonQuery,
 } from "../types";
-import { mockAmazonPriceCents, mockComparisonPriceCents } from "./mock";
 
 /**
  * idealo provider for the async "Idealo Data" RapidAPI.
@@ -280,7 +279,7 @@ class IdealoProvider implements ComparisonProvider {
   }
 
   async findBestOffer(query: ComparisonQuery): Promise<ComparisonOffer | null> {
-    if (!this.enabled) return this.mockOffer(query);
+    if (!this.enabled) return null;
 
     const deadline = Date.now() + IDEALO_DATA.poll.budgetMs;
     let best: RawOffer | null = null;
@@ -456,21 +455,6 @@ class IdealoProvider implements ComparisonProvider {
       await sleep(IDEALO_DATA.poll.delayMs);
     }
     return null;
-  }
-
-  private mockOffer(query: ComparisonQuery): ComparisonOffer {
-    const amazon = mockAmazonPriceCents(query.asin);
-    const ean = query.ean ?? query.eans[0] ?? null;
-    return {
-      source: this.source,
-      priceCents: mockComparisonPriceCents(amazon, query.asin, this.source),
-      url: ean
-        ? `https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q=${ean}`
-        : null,
-      inStock: true,
-      matchedName: query.title,
-      mock: true,
-    };
   }
 }
 

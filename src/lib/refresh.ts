@@ -37,8 +37,13 @@ export async function refreshProduct(productId: string): Promise<void> {
         ean: amazon.ean ?? product.ean,
         salesRank: amazon.salesRank ?? product.salesRank,
         salesRankDrops30: amazon.salesRankDrops30 ?? product.salesRankDrops30,
+        salesRankDrops90: amazon.salesRankDrops90 ?? product.salesRankDrops90,
         amazonPriceCents: amazon.priceCents ?? product.amazonPriceCents,
         amazonAvg30Cents: amazon.avgPrice30Cents ?? product.amazonAvg30Cents,
+        amazonAvg90Cents: amazon.avgPrice90Cents ?? product.amazonAvg90Cents,
+        rating: amazon.rating ?? product.rating,
+        reviewCount: amazon.reviewCount ?? product.reviewCount,
+        offerCountNew: amazon.offerCountNew ?? product.offerCountNew,
         lastRefreshedAt: new Date(),
       },
     });

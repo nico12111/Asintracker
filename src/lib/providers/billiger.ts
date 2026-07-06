@@ -4,7 +4,6 @@ import type {
   ComparisonOffer,
   ComparisonQuery,
 } from "../types";
-import { mockAmazonPriceCents, mockComparisonPriceCents } from "./mock";
 
 /**
  * billiger.de provider.
@@ -56,9 +55,7 @@ class BilligerProvider implements ComparisonProvider {
   }
 
   async findBestOffer(query: ComparisonQuery): Promise<ComparisonOffer | null> {
-    if (!this.enabled) {
-      return this.mockOffer(query);
-    }
+    if (!this.enabled) return null;
 
     const term = query.ean || query.eans[0] || query.title;
     if (!term) return null;
@@ -88,20 +85,6 @@ class BilligerProvider implements ComparisonProvider {
       inStock: true,
       matchedName: query.title,
       mock: false,
-    };
-  }
-
-  private mockOffer(query: ComparisonQuery): ComparisonOffer {
-    const amazon = mockAmazonPriceCents(query.asin);
-    return {
-      source: this.source,
-      priceCents: mockComparisonPriceCents(amazon, query.asin, this.source),
-      url: query.ean
-        ? `https://www.billiger.de/search?searchstring=${query.ean}`
-        : null,
-      inStock: true,
-      matchedName: query.title,
-      mock: true,
     };
   }
 }

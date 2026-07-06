@@ -13,6 +13,29 @@ export interface MarginSettings {
 
 const STORAGE_KEY = "asintracker.margin";
 
+interface Filters {
+  minRoi: string;
+  minMargin: string;
+  maxBsr: string;
+  minDrops30: string;
+  minPrice: string;
+  maxPrice: string;
+  minRating: string;
+}
+const EMPTY_FILTERS: Filters = {
+  minRoi: "",
+  minMargin: "",
+  maxBsr: "",
+  minDrops30: "",
+  minPrice: "",
+  maxPrice: "",
+  minRating: "",
+};
+const parseNum = (s: string): number | null => {
+  const n = parseFloat(s.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+
 function withMargin(p: ProductDTO, s: MarginSettings): ProductDTO {
   return {
     ...p,
@@ -47,6 +70,8 @@ export function ProductTable({
   const [showSettings, setShowSettings] = useState(false);
   const [search, setSearch] = useState("");
   const [onlyOpportunities, setOnlyOpportunities] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [addValue, setAddValue] = useState("");
@@ -72,28 +97,71 @@ export function ProductTable({
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
 
+  // Reset to the first page whenever the filter set changes.
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
+
   const computed = useMemo(
     () => products.map((p) => withMargin(p, settings)),
     [products, settings],
   );
 
   const opportunities = computed.filter((p) => p.margin.isBuyOpportunity).length;
+  const activeFilterCount = Object.values(filters).filter(
+    (v) => v.trim() !== "",
+  ).length;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const minRoi = parseNum(filters.minRoi);
+    const minMargin = parseNum(filters.minMargin);
+    const maxBsr = parseNum(filters.maxBsr);
+    const minDrops = parseNum(filters.minDrops30);
+    const minPrice = parseNum(filters.minPrice);
+    const maxPrice = parseNum(filters.maxPrice);
+    const minRating = parseNum(filters.minRating);
+
     return computed
       .filter((p) => {
         if (onlyOpportunities && !p.margin.isBuyOpportunity) return false;
-        if (!q) return true;
-        return [p.asin, p.title, p.brand, p.category, p.ean]
-          .filter(Boolean)
-          .some((v) => v!.toLowerCase().includes(q));
+        if (
+          q &&
+          ![p.asin, p.title, p.brand, p.category, p.ean]
+            .filter(Boolean)
+            .some((v) => v!.toLowerCase().includes(q))
+        ) {
+          return false;
+        }
+        if (minRoi != null && (p.margin.roiPct == null || p.margin.roiPct < minRoi))
+          return false;
+        if (
+          minMargin != null &&
+          (p.margin.marginPct == null || p.margin.marginPct < minMargin)
+        )
+          return false;
+        if (maxBsr != null && (p.salesRank == null || p.salesRank > maxBsr))
+          return false;
+        if (
+          minDrops != null &&
+          (p.salesRankDrops30 == null || p.salesRankDrops30 < minDrops)
+        )
+          return false;
+        const priceEur =
+          p.amazonPriceCents != null ? p.amazonPriceCents / 100 : null;
+        if (minPrice != null && (priceEur == null || priceEur < minPrice))
+          return false;
+        if (maxPrice != null && (priceEur == null || priceEur > maxPrice))
+          return false;
+        if (minRating != null && (p.rating == null || p.rating < minRating))
+          return false;
+        return true;
       })
       .sort(
         (a, b) =>
           (b.margin.roiPct ?? -Infinity) - (a.margin.roiPct ?? -Infinity),
       );
-  }, [computed, search, onlyOpportunities]);
+  }, [computed, search, onlyOpportunities, filters]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -214,8 +282,13 @@ export function ProductTable({
       titel: p.title ?? "",
       marke: p.brand ?? "",
       kategorie: p.category ?? "",
+      bewertung: p.rating ?? "",
+      reviews: p.reviewCount ?? "",
       bsr: p.salesRank ?? "",
+      drops30: p.salesRankDrops30 ?? "",
       amazon_eur: p.amazonPriceCents != null ? p.amazonPriceCents / 100 : "",
+      amazon_avg30_eur:
+        p.amazonAvg30Cents != null ? p.amazonAvg30Cents / 100 : "",
       idealo_eur: offerFor(p, "idealo")
         ? offerFor(p, "idealo")!.priceCents / 100
         : "",
@@ -347,6 +420,18 @@ export function ProductTable({
           ⚙ Marge
         </button>
         <button
+          onClick={() => setShowFilters((v) => !v)}
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            activeFilterCount > 0
+              ? "border-emerald-500 text-emerald-400"
+              : showFilters
+                ? "border-emerald-500 text-emerald-400"
+                : "border-slate-700 text-slate-300 hover:bg-slate-800"
+          }`}
+        >
+          ⚗ Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+        </button>
+        <button
           onClick={refreshSelected}
           disabled={isPending}
           className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
@@ -386,6 +471,61 @@ export function ProductTable({
         </div>
       )}
 
+      {/* Filters */}
+      {showFilters && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <FilterField
+              label="Min. ROI (%)"
+              value={filters.minRoi}
+              onChange={(v) => setFilters((f) => ({ ...f, minRoi: v }))}
+            />
+            <FilterField
+              label="Min. Marge (%)"
+              value={filters.minMargin}
+              onChange={(v) => setFilters((f) => ({ ...f, minMargin: v }))}
+            />
+            <FilterField
+              label="Max. BSR"
+              value={filters.maxBsr}
+              onChange={(v) => setFilters((f) => ({ ...f, maxBsr: v }))}
+            />
+            <FilterField
+              label="Min. Drops 30T"
+              value={filters.minDrops30}
+              onChange={(v) => setFilters((f) => ({ ...f, minDrops30: v }))}
+            />
+            <FilterField
+              label="Preis von (€)"
+              value={filters.minPrice}
+              onChange={(v) => setFilters((f) => ({ ...f, minPrice: v }))}
+            />
+            <FilterField
+              label="Preis bis (€)"
+              value={filters.maxPrice}
+              onChange={(v) => setFilters((f) => ({ ...f, maxPrice: v }))}
+            />
+            <FilterField
+              label="Min. Bewertung (★)"
+              value={filters.minRating}
+              onChange={(v) => setFilters((f) => ({ ...f, minRating: v }))}
+            />
+          </div>
+          <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
+            <button
+              onClick={() => {
+                setFilters(EMPTY_FILTERS);
+                setPage(1);
+              }}
+              className="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-800"
+            >
+              Filter zurücksetzen
+            </button>
+            <span>Leere Felder werden ignoriert. Wirkt live auf die Liste.</span>
+          </div>
+        </div>
+      )}
+
       {/* Bulk actions */}
       {selected.size > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-sm">
@@ -407,7 +547,7 @@ export function ProductTable({
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-slate-800">
-        <table className="w-full min-w-[1560px] text-sm">
+        <table className="w-full min-w-[1720px] text-sm">
           <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-3">
@@ -421,6 +561,8 @@ export function ProductTable({
               <th className="px-3 py-3">ASIN / Titel</th>
               <th className="px-3 py-3">Marke</th>
               <th className="px-3 py-3">Kategorie</th>
+              <th className="px-3 py-3 text-right" title="Sterne-Bewertung">★</th>
+              <th className="px-3 py-3 text-right" title="Anzahl Bewertungen">Reviews</th>
               <th className="px-3 py-3 text-right">BSR</th>
               <th className="px-3 py-3 text-right" title="BSR-Drops (30 Tage) – Verkaufs-Indikator">Drops 30T</th>
               <th className="px-3 py-3 text-right">Amazon</th>
@@ -524,6 +666,14 @@ export function ProductTable({
                   <td className="px-3 py-2 text-slate-300">{p.brand ?? "—"}</td>
                   <td className="px-3 py-2 text-slate-400">
                     {p.category ?? "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-amber-300">
+                    {p.rating != null ? p.rating.toFixed(1) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-400">
+                    {p.reviewCount != null
+                      ? p.reviewCount.toLocaleString("de-DE")
+                      : "—"}
                   </td>
                   <td className="px-3 py-2 text-right text-slate-400">
                     {p.salesRank != null
@@ -729,6 +879,30 @@ function NumberField({
         className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
       />
       <span className="mt-1 block text-xs text-slate-500">{hint}</span>
+    </label>
+  );
+}
+
+function FilterField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-slate-300">{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        value={value}
+        placeholder="—"
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm outline-none focus:border-emerald-500"
+      />
     </label>
   );
 }
