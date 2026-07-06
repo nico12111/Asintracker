@@ -317,32 +317,62 @@ class IdealoProvider implements ComparisonProvider {
     };
   }
 
-  /** Step-by-step diagnostic of the GTIN matching (for /api/debug). */
+  /** Verbose diagnostic: shows the raw poll responses over time (/api/debug). */
   async debug(query: ComparisonQuery): Promise<unknown> {
     if (!this.enabled) return { enabled: false };
     const candidates = gtinCandidates(query.eans, query.ean);
-    const deadline = Date.now() + IDEALO_DATA.poll.budgetMs;
-    const attempts: unknown[] = [];
-    for (const gtin of candidates) {
-      const step: Record<string, unknown> = { gtin };
-      try {
-        const jobId = await this.startSearch("gtin", gtin);
-        step.jobId = jobId;
-        if (jobId) {
-          const results = await this.pollResults(jobId, deadline);
-          step.gotResults = Boolean(results);
-          step.parsedOffer = results ? parsePoll(results) : null;
-          step.rawSample = results
-            ? JSON.stringify(results).slice(0, 1200)
-            : null;
-        }
-      } catch (err) {
-        step.error = String(err);
-      }
-      attempts.push(step);
-      if ((step.parsedOffer as unknown) != null) break;
+    const gtin = candidates[0] ?? null;
+
+    let jobId: string | null = null;
+    let startError: string | null = null;
+    try {
+      if (gtin) jobId = await this.startSearch("gtin", gtin);
+    } catch (err) {
+      startError = String(err);
     }
-    return { candidates, attempts };
+
+    const pollUrl = jobId
+      ? `${env.idealo.apiUrl}${IDEALO_DATA.paths.poll}/${encodeURIComponent(jobId)}`
+      : null;
+
+    const polls: unknown[] = [];
+    if (pollUrl) {
+      for (let i = 0; i < 15; i++) {
+        const rec: Record<string, unknown> = { i };
+        try {
+          const res = await fetch(pollUrl, {
+            method: "GET",
+            headers: buildHeaders("application/json"),
+            cache: "no-store",
+          });
+          rec.http = res.status;
+          if (res.ok) {
+            const json = (await res.json()) as { status?: string };
+            rec.status = json?.status ?? null;
+            rec.state = pollState(json);
+            rec.offer = parsePoll(json);
+            rec.sample = JSON.stringify(json).slice(0, 500);
+          } else {
+            rec.body = (await res.text()).slice(0, 300);
+          }
+        } catch (err) {
+          rec.error = String(err);
+        }
+        polls.push(rec);
+        if (rec.state === "ready" || rec.state === "failed") break;
+        await sleep(1500);
+      }
+    }
+
+    return {
+      version: "debug-v2-pollraw",
+      pollUrlTemplate: `${IDEALO_DATA.paths.poll}/<jobId>`,
+      candidates,
+      gtin,
+      jobId,
+      startError,
+      polls,
+    };
   }
 
   /**
