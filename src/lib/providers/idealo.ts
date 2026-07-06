@@ -310,6 +310,33 @@ class IdealoProvider implements ComparisonProvider {
     };
   }
 
+  /** Step-by-step diagnostic of the GTIN matching (for /api/debug). */
+  async debug(query: ComparisonQuery): Promise<unknown> {
+    if (!this.enabled) return { enabled: false };
+    const candidates = gtinCandidates(query.eans, query.ean);
+    const attempts: unknown[] = [];
+    for (const gtin of candidates) {
+      const step: Record<string, unknown> = { gtin };
+      try {
+        const jobId = await this.startSearch("gtin", gtin);
+        step.jobId = jobId;
+        if (jobId) {
+          const results = await this.pollResults(jobId);
+          step.gotResults = Boolean(results);
+          step.parsedOffer = results ? parsePoll(results) : null;
+          step.rawSample = results
+            ? JSON.stringify(results).slice(0, 1200)
+            : null;
+        }
+      } catch (err) {
+        step.error = String(err);
+      }
+      attempts.push(step);
+      if ((step.parsedOffer as unknown) != null) break;
+    }
+    return { candidates, attempts };
+  }
+
   /**
    * Start a search of the given kind, poll for results, return cheapest.
    * Resilient: any error (e.g. an unsupported endpoint) resolves to null so
