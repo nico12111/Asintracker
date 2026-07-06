@@ -80,8 +80,9 @@ function extractEuro(value: unknown, depth = 0): number | null {
 }
 
 function buildHeaders(): Record<string, string> {
+  // The RapidAPI idealo-api expects an x-www-form-urlencoded body.
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
   };
   if (env.idealo.apiKey) {
@@ -92,9 +93,15 @@ function buildHeaders(): Record<string, string> {
     headers[env.idealo.keyHeader] = value;
   }
   if (env.idealo.host) {
-    headers["X-RapidAPI-Host"] = env.idealo.host;
+    // RapidAPI routes on this header; also send lowercase for good measure.
+    headers["x-rapidapi-host"] = env.idealo.host;
   }
   return headers;
+}
+
+/** Encode a flat object as application/x-www-form-urlencoded. */
+function formBody(fields: Record<string, string>): string {
+  return new URLSearchParams(fields).toString();
 }
 
 class IdealoProvider implements ComparisonProvider {
@@ -116,7 +123,7 @@ class IdealoProvider implements ComparisonProvider {
     const res = await fetch(`${env.idealo.apiUrl}/api/idealo/search`, {
       method: "POST",
       headers: buildHeaders(),
-      body: JSON.stringify({ query: term, country: env.idealo.country }),
+      body: formBody({ query: term, country: env.idealo.country }),
       cache: "no-store",
     });
 
@@ -181,8 +188,8 @@ class IdealoProvider implements ComparisonProvider {
       const res = await fetch(`${env.idealo.apiUrl}/api/idealo/product`, {
         method: "POST",
         headers: buildHeaders(),
-        body: JSON.stringify({
-          itemId: item.itemId,
+        body: formBody({
+          itemId: String(item.itemId),
           itemType: item.itemType ?? "PRODUCT",
           country: env.idealo.country,
         }),
