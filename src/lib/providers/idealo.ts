@@ -433,19 +433,36 @@ class IdealoProvider implements ComparisonProvider {
       [IDEALO_DATA.fields.country]: env.idealo.country.toLowerCase(),
     }).toString();
 
-    const res = await fetch(`${env.idealo.apiUrl}${path}`, {
-      method: "POST",
-      headers: buildHeaders("application/x-www-form-urlencoded"),
-      body,
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      throw new Error(
-        `idealo start-search failed: ${res.status} ${res.statusText}`,
-      );
+    // Retry on 429 (rate limit) with backoff, respecting Retry-After.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const res = await fetch(`${env.idealo.apiUrl}${path}`, {
+        method: "POST",
+        headers: buildHeaders("application/x-www-form-urlencoded"),
+        body,
+        cache: "no-store",
+      });
+
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const waitMs = Math.min(
+          (Number.isFinite(retryAfter) && retryAfter > 0
+            ? retryAfter
+            : 2 * (attempt + 1)) * 1000,
+          8000,
+        );
+        await sleep(waitMs);
+        continue;
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          `idealo start-search failed: ${res.status} ${res.statusText}`,
+        );
+      }
+      const data = (await res.json()) as StartResponse;
+      return data.job_id ?? data.jobId ?? null;
     }
-    const data = (await res.json()) as StartResponse;
-    return data.job_id ?? data.jobId ?? null;
+    throw new Error("idealo start-search failed: 429 (rate limited)");
   }
 
   /** Poll /poll-job/<jobId> until results are ready, a time budget is hit. */
