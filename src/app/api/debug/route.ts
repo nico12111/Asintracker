@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     ean: amazon.ean,
     eans: amazon.eans,
     title: amazon.title,
+    brand: amazon.brand,
   };
 
   const idealo = await idealoProvider.debug(query);

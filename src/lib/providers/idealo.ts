@@ -271,6 +271,21 @@ function gtinCandidates(eans: string[], primary: string | null): string[] {
   return [...set].slice(0, 6);
 }
 
+/**
+ * Turn a long Amazon title into a concise idealo search term: take the part
+ * before the first separator (–, -, |, ,), prepend the brand if missing, and
+ * cap the length. e.g. "Teufel REAL Blue NC 3 - Kabellose Bluetooth…" ->
+ * "Teufel REAL Blue NC 3".
+ */
+function cleanSearchTerm(title: string, brand: string | null): string {
+  let core = title.split(/\s[–—\-|,]\s|,\s/)[0]?.trim() || title.trim();
+  if (core.length > 70) core = core.slice(0, 70).trim();
+  if (brand && !core.toLowerCase().includes(brand.toLowerCase())) {
+    core = `${brand} ${core}`;
+  }
+  return core;
+}
+
 class IdealoProvider implements ComparisonProvider {
   readonly source = "idealo" as const;
 
@@ -298,9 +313,13 @@ class IdealoProvider implements ComparisonProvider {
       }
     }
 
-    // 3) Last resort: search by product title.
+    // 3) Last resort: search by a cleaned product title (brand + core name).
     if (!best && query.title && Date.now() < deadline) {
-      best = await this.searchAndPoll("term", query.title, deadline);
+      best = await this.searchAndPoll(
+        "term",
+        cleanSearchTerm(query.title, query.brand),
+        deadline,
+      );
     }
 
     if (!best) return null;

@@ -21,11 +21,13 @@ export async function refreshProduct(productId: string): Promise<void> {
   let ean = product.ean;
   let keepaEans: string[] = [];
   let title = product.title;
+  let brand = product.brand;
   try {
     const amazon = await amazonProvider.fetchProduct(product.asin);
     ean = amazon.ean ?? ean;
     keepaEans = amazon.eans;
     title = amazon.title ?? title;
+    brand = amazon.brand ?? brand;
 
     await prisma.product.update({
       where: { id: product.id },
@@ -70,6 +72,7 @@ export async function refreshProduct(productId: string): Promise<void> {
     ean: product.manualEan ?? ean,
     eans,
     title,
+    brand,
     idealoItemId,
   };
 

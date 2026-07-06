@@ -53,6 +53,7 @@ export interface ComparisonQuery {
   /** All known GTIN/EAN codes to try when matching. */
   eans: string[];
   title: string | null;
+  brand: string | null;
   /** Previously resolved idealo item id (skip the search when present). */
   idealoItemId?: string | null;
 }
