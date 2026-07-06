@@ -22,17 +22,27 @@ einzukaufen ist, als es sich auf Amazon (nach Gebühren) verkaufen lässt, und d
 
 ## Tech-Stack
 
-Next.js 14 (App Router) · TypeScript · Prisma (SQLite) · Tailwind CSS.
+Next.js 14 (App Router) · TypeScript · Prisma (PostgreSQL) · Tailwind CSS.
 
-## Schnellstart
+## Deployment
+
+Für den Live-Betrieb auf **Vercel** siehe die Schritt-für-Schritt-Anleitung in
+[`DEPLOY.md`](./DEPLOY.md).
+
+## Lokaler Schnellstart
+
+Benötigt eine PostgreSQL-Datenbank (z. B. kostenlos via [Neon](https://neon.tech)).
+`DATABASE_URL` und `DIRECT_URL` dürfen lokal identisch sein.
 
 ```bash
 npm install
-cp .env.example .env         # Keys eintragen (optional – ohne Keys: Demo-Modus)
+cp .env.example .env         # DATABASE_URL/DIRECT_URL + Keys eintragen
 npm run db:push              # Datenbankschema anlegen
 npm run db:seed              # (optional) Beispiel-ASINs laden
 npm run dev                  # http://localhost:3000
 ```
+
+> Ohne API-Keys läuft alles im Demo-/Mock-Modus mit Beispieldaten.
 
 ## Konfiguration (`.env`)
 

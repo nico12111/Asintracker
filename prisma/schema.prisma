@@ -6,8 +6,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection (used at runtime on serverless).
+  url       = env("DATABASE_URL")
+  // Direct connection (used by `prisma db push` / migrations).
+  directUrl = env("DIRECT_URL")
 }
 
 /// A tracked Amazon product identified by its ASIN.
