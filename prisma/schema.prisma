@@ -1,0 +1,75 @@
+// Prisma schema for AsinTracker
+// SQLite by default; switch `provider` to "postgresql" and update DATABASE_URL for production.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A tracked Amazon product identified by its ASIN.
+model Product {
+  id        String   @id @default(cuid())
+  asin      String   @unique
+  title     String?
+  brand     String?
+  category  String?
+  imageUrl  String?
+  ean       String? // GTIN/EAN, used to match products on idealo / billiger
+
+  /// Amazon Best Sellers Rank (BSR) in the product's main category.
+  salesRank Int?
+
+  /// Current Amazon Buy-Box / sell price in cents (EUR). null = unknown.
+  amazonPriceCents Int?
+
+  /// Amazon referral fee percentage for this product (e.g. 15.0).
+  referralFeePct   Float?
+  /// Flat fulfilment / shipping cost per unit in cents.
+  fulfillmentFeeCents Int?
+
+  lastRefreshedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  offers    Offer[]
+  snapshots PriceSnapshot[]
+
+  @@index([asin])
+}
+
+/// The current best offer from a comparison source (one row per source per product).
+model Offer {
+  id        String   @id @default(cuid())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+
+  /// "idealo" | "billiger" | ... (see PriceSource in code)
+  source     String
+  priceCents Int
+  url        String?
+  inStock    Boolean  @default(true)
+  matchedName String?
+
+  capturedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([productId, source])
+  @@index([source])
+}
+
+/// Historical price points for trend analysis and "cheaper than before" alerts.
+model PriceSnapshot {
+  id        String   @id @default(cuid())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+
+  source     String // "amazon" | "idealo" | "billiger"
+  priceCents Int
+  capturedAt DateTime @default(now())
+
+  @@index([productId, source, capturedAt])
+}
