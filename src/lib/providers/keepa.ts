@@ -16,7 +16,9 @@ import {
  */
 interface KeepaStats {
   current?: number[];
+  avg30?: number[];
   buyBoxPrice?: number;
+  salesRankDrops30?: number;
 }
 
 interface KeepaProduct {
@@ -44,19 +46,22 @@ function firstImageUrl(imagesCSV?: string): string | null {
   return `https://m.media-amazon.com/images/I/${first}`;
 }
 
+/** Pick a price from a Keepa price array: Buy Box (18) → Amazon (0) → New (1). */
+function pickFromArray(arr?: number[]): number | null {
+  if (!Array.isArray(arr)) return null;
+  for (const idx of [18, 0, 1]) {
+    const v = arr[idx];
+    if (typeof v === "number" && v > 0) return v;
+  }
+  return null;
+}
+
 function pickPriceCents(stats?: KeepaStats): number | null {
   if (!stats) return null;
   if (typeof stats.buyBoxPrice === "number" && stats.buyBoxPrice > 0) {
     return stats.buyBoxPrice;
   }
-  const current = stats.current;
-  if (!Array.isArray(current)) return null;
-  // Prefer Buy Box (18), then Amazon (0), then New (1).
-  for (const idx of [18, 0, 1]) {
-    const v = current[idx];
-    if (typeof v === "number" && v > 0) return v;
-  }
-  return null;
+  return pickFromArray(stats.current);
 }
 
 function pickSalesRank(product: KeepaProduct): number | null {
@@ -96,7 +101,8 @@ class KeepaProvider implements AmazonProvider {
     url.searchParams.set("key", env.keepa.apiKey);
     url.searchParams.set("domain", env.keepa.domain);
     url.searchParams.set("asin", asin);
-    url.searchParams.set("stats", "1");
+    // A day interval makes Keepa include avg30/avg90 + salesRankDrops30/90.
+    url.searchParams.set("stats", "90");
     url.searchParams.set("buybox", "1");
 
     const res = await fetch(url, { cache: "no-store" });
@@ -119,7 +125,9 @@ class KeepaProvider implements AmazonProvider {
         ean: null,
         eans: [],
         salesRank: null,
+        salesRankDrops30: null,
         priceCents: null,
+        avgPrice30Cents: null,
         mock: false,
       };
     }
@@ -137,7 +145,9 @@ class KeepaProvider implements AmazonProvider {
       ean: eans[0] ?? null,
       eans,
       salesRank: pickSalesRank(product),
+      salesRankDrops30: product.stats?.salesRankDrops30 ?? null,
       priceCents: pickPriceCents(product.stats),
+      avgPrice30Cents: pickFromArray(product.stats?.avg30),
       mock: false,
     };
   }
@@ -153,7 +163,9 @@ class KeepaProvider implements AmazonProvider {
       ean,
       eans: [ean],
       salesRank: mockSalesRank(asin),
+      salesRankDrops30: 20 + (mockSalesRank(asin) % 400),
       priceCents: mockAmazonPriceCents(asin),
+      avgPrice30Cents: Math.round(mockAmazonPriceCents(asin) * 1.04),
       mock: true,
     };
   }

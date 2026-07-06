@@ -407,7 +407,7 @@ export function ProductTable({
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-slate-800">
-        <table className="w-full min-w-[1240px] text-sm">
+        <table className="w-full min-w-[1560px] text-sm">
           <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-3">
@@ -422,12 +422,17 @@ export function ProductTable({
               <th className="px-3 py-3">Marke</th>
               <th className="px-3 py-3">Kategorie</th>
               <th className="px-3 py-3 text-right">BSR</th>
+              <th className="px-3 py-3 text-right" title="BSR-Drops (30 Tage) – Verkaufs-Indikator">Drops 30T</th>
               <th className="px-3 py-3 text-right">Amazon</th>
+              <th className="px-3 py-3 text-right" title="30-Tage-Durchschnittspreis (Keepa)">Ø30T VK</th>
               <th className="px-3 py-3 text-right">idealo</th>
               <th className="px-3 py-3 text-right">billiger</th>
               <th className="px-3 py-3 text-right">Bester EK</th>
               <th className="px-3 py-3 text-right">Gewinn</th>
+              <th className="px-3 py-3 text-right">Marge %</th>
               <th className="px-3 py-3 text-right">ROI</th>
+              <th className="px-3 py-3 text-right" title="Marge auf Basis des 30-Tage-Ø-Preises">Marge Ø30T</th>
+              <th className="px-3 py-3 text-right" title="ROI auf Basis des 30-Tage-Ø-Preises">ROI Ø30T</th>
               <th className="px-3 py-3"></th>
             </tr>
           </thead>
@@ -448,6 +453,17 @@ export function ProductTable({
                 live.length > 0
                   ? live.reduce((a, b) => (b[1] < a[1] ? b : a))[0]
                   : null;
+
+              // Margin/ROI based on the 30-day average Amazon price.
+              const margin30 = computeMargin({
+                amazonPriceCents: p.amazonAvg30Cents,
+                bestBuyPriceCents: p.bestOffer?.priceCents ?? null,
+                referralFeePct: settings.referralFeePct,
+                fulfillmentFeeCents: Math.round(
+                  (settings.fulfillmentEur || 0) * 100,
+                ),
+                minRoiPct: settings.minRoiPct,
+              });
               return (
                 <tr
                   key={p.id}
@@ -514,8 +530,16 @@ export function ProductTable({
                       ? p.salesRank.toLocaleString("de-DE")
                       : "—"}
                   </td>
+                  <td className="px-3 py-2 text-right text-slate-400">
+                    {p.salesRankDrops30 != null
+                      ? p.salesRankDrops30.toLocaleString("de-DE")
+                      : "—"}
+                  </td>
                   <td className="px-3 py-2 text-right font-medium">
                     {formatEuro(p.amazonPriceCents)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-400">
+                    {formatEuro(p.amazonAvg30Cents)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {idealo ? (
@@ -563,12 +587,33 @@ export function ProductTable({
                   </td>
                   <td
                     className={`px-3 py-2 text-right ${
+                      p.margin.marginPct != null && p.margin.marginPct > 0
+                        ? "text-emerald-400"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {formatPct(p.margin.marginPct)}
+                  </td>
+                  <td
+                    className={`px-3 py-2 text-right ${
                       p.margin.roiPct != null && p.margin.roiPct > 0
                         ? "text-emerald-400"
                         : "text-slate-500"
                     }`}
                   >
                     {formatPct(p.margin.roiPct)}
+                  </td>
+                  <td
+                    className="px-3 py-2 text-right text-slate-300"
+                    title="Marge auf Basis des 30-Tage-Ø-Amazon-Preises"
+                  >
+                    {formatPct(margin30.marginPct)}
+                  </td>
+                  <td
+                    className="px-3 py-2 text-right text-slate-300"
+                    title="ROI auf Basis des 30-Tage-Ø-Amazon-Preises"
+                  >
+                    {formatPct(margin30.roiPct)}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-1.5">

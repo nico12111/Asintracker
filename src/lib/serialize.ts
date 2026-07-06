@@ -23,7 +23,9 @@ export interface ProductDTO {
   ean: string | null;
   manualEan: string | null;
   salesRank: number | null;
+  salesRankDrops30: number | null;
   amazonPriceCents: number | null;
+  amazonAvg30Cents: number | null;
   offers: OfferDTO[];
   /** Cheapest in-stock comparison offer. */
   bestOffer: OfferDTO | null;
@@ -64,7 +66,9 @@ export function serializeProduct(product: ProductWithOffers): ProductDTO {
     ean: product.ean,
     manualEan: product.manualEan,
     salesRank: product.salesRank,
+    salesRankDrops30: product.salesRankDrops30,
     amazonPriceCents: product.amazonPriceCents,
+    amazonAvg30Cents: product.amazonAvg30Cents,
     offers,
     bestOffer,
     margin,

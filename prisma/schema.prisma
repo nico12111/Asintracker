@@ -33,6 +33,10 @@ model Product {
 
   /// Current Amazon Buy-Box / sell price in cents (EUR). null = unknown.
   amazonPriceCents Int?
+  /// 30-day average Amazon Buy-Box/sell price in cents.
+  amazonAvg30Cents Int?
+  /// Number of BSR drops in the last 30 days (sales-velocity proxy).
+  salesRankDrops30 Int?
 
   /// Amazon referral fee percentage for this product (e.g. 15.0).
   referralFeePct   Float?

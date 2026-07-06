@@ -36,7 +36,9 @@ export async function refreshProduct(productId: string): Promise<void> {
         imageUrl: amazon.imageUrl ?? product.imageUrl,
         ean: amazon.ean ?? product.ean,
         salesRank: amazon.salesRank ?? product.salesRank,
+        salesRankDrops30: amazon.salesRankDrops30 ?? product.salesRankDrops30,
         amazonPriceCents: amazon.priceCents ?? product.amazonPriceCents,
+        amazonAvg30Cents: amazon.avgPrice30Cents ?? product.amazonAvg30Cents,
         lastRefreshedAt: new Date(),
       },
     });
