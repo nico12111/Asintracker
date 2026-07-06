@@ -2,11 +2,23 @@ import { prisma } from "./db";
 import { amazonProvider, comparisonProviders } from "./providers";
 import type { ComparisonQuery } from "./types";
 
+export interface RefreshOptions {
+  /**
+   * Whether to query the comparison sources (idealo/billiger). Defaults to
+   * false to conserve limited third-party API quota — only enable it on add
+   * or an explicit idealo refresh.
+   */
+  comparison?: boolean;
+}
+
 /**
- * Refresh Amazon data and all comparison offers for a single product.
+ * Refresh Amazon (Keepa) data and, if requested, the comparison offers.
  * Every fetch is isolated so one failing provider never blocks the others.
  */
-export async function refreshProduct(productId: string): Promise<void> {
+export async function refreshProduct(
+  productId: string,
+  options: RefreshOptions = {},
+): Promise<void> {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     include: { offers: true },
@@ -63,7 +75,10 @@ export async function refreshProduct(productId: string): Promise<void> {
     console.error(`[refresh] Amazon fetch failed for ${product.asin}:`, err);
   }
 
-  // 2) Comparison sources. Manual GTIN override is tried first, then Keepa's.
+  // 2) Comparison sources (only when explicitly requested — saves API quota).
+  if (!options.comparison) return;
+
+  // Manual GTIN override is tried first, then Keepa's.
   const eans = [product.manualEan, ean, ...keepaEans].filter(
     (e): e is string => Boolean(e),
   );
@@ -132,8 +147,11 @@ export async function refreshProduct(productId: string): Promise<void> {
 }
 
 /** Refresh a batch of products sequentially (gentle on rate limits). */
-export async function refreshProducts(productIds: string[]): Promise<void> {
+export async function refreshProducts(
+  productIds: string[],
+  options: RefreshOptions = {},
+): Promise<void> {
   for (const id of productIds) {
-    await refreshProduct(id);
+    await refreshProduct(id, options);
   }
 }

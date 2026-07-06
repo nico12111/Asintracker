@@ -38,13 +38,14 @@ const IDEALO_DATA = {
     jobId: "job_id",
   },
   poll: {
-    delayMs: 1500,
+    // Jobs need a few seconds; wait before the first poll to save requests.
+    initialDelayMs: 5000,
+    delayMs: 3000,
+    // Hard cap on poll requests per job (each poll counts against API quota).
+    maxPolls: 6,
     // Overall time budget for one findBestOffer call (serverless maxDuration
     // is 60s; leave headroom for the Keepa fetch that ran before this).
     budgetMs: 48000,
-    // Cap time spent polling a single job so a stuck job still leaves time to
-    // try the next candidate.
-    perJobMs: 25000,
   },
 };
 
@@ -268,7 +269,7 @@ function gtinCandidates(eans: string[], primary: string | null): string[] {
     if (e.length === 12) set.add("0" + e); // UPC-A -> EAN-13
     if (e.length === 13 && e.startsWith("0")) set.add(e.slice(1)); // EAN-13 -> UPC-A
   }
-  return [...set].slice(0, 6);
+  return [...set].slice(0, 3);
 }
 
 /**
@@ -355,7 +356,8 @@ class IdealoProvider implements ComparisonProvider {
 
     const polls: unknown[] = [];
     if (pollUrl) {
-      for (let i = 0; i < 15; i++) {
+      await sleep(IDEALO_DATA.poll.initialDelayMs);
+      for (let i = 0; i < IDEALO_DATA.poll.maxPolls; i++) {
         const rec: Record<string, unknown> = { i };
         try {
           const res = await fetch(pollUrl, {
@@ -473,10 +475,12 @@ class IdealoProvider implements ComparisonProvider {
     const pollUrl = `${env.idealo.apiUrl}${IDEALO_DATA.paths.poll}/${encodeURIComponent(
       jobId,
     )}`;
-    // Don't spend the whole global budget on a single stuck job.
-    const jobDeadline = Math.min(deadline, Date.now() + IDEALO_DATA.poll.perJobMs);
 
-    while (Date.now() < jobDeadline) {
+    // Give the job a head start before the first (quota-costing) poll.
+    await sleep(IDEALO_DATA.poll.initialDelayMs);
+
+    for (let i = 0; i < IDEALO_DATA.poll.maxPolls; i++) {
+      if (Date.now() > deadline) break;
       const res = await fetch(pollUrl, {
         method: "GET",
         headers: buildHeaders("application/json"),

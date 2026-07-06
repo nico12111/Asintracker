@@ -6,13 +6,18 @@ import { refreshProducts } from "@/lib/refresh";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const bodySchema = z.object({ ids: z.array(z.string()).optional() });
+const bodySchema = z.object({
+  ids: z.array(z.string()).optional(),
+  comparison: z.boolean().optional(),
+});
 
 /** POST /api/refresh — refresh all products, or a subset via { ids }. */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => ({}));
   const parsed = bodySchema.safeParse(json);
   const ids = parsed.success ? parsed.data.ids : undefined;
+  // Comparison (idealo) is opt-in to protect the limited API quota.
+  const comparison = parsed.success ? Boolean(parsed.data.comparison) : false;
 
   const targets =
     ids && ids.length > 0
@@ -21,6 +26,6 @@ export async function POST(req: Request) {
           await prisma.product.findMany({ select: { id: true } })
         ).map((p) => p.id);
 
-  await refreshProducts(targets);
+  await refreshProducts(targets, { comparison });
   return NextResponse.json({ refreshed: targets.length });
 }

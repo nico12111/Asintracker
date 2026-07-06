@@ -51,8 +51,9 @@ export async function POST(req: Request) {
     newAsins.map((asin) => prisma.product.create({ data: { asin } })),
   );
 
-  // Refresh the newly-added products so the dashboard is populated immediately.
-  await refreshProducts(created.map((p) => p.id));
+  // Refresh the newly-added products (incl. idealo once) so the dashboard is
+  // populated immediately.
+  await refreshProducts(created.map((p) => p.id), { comparison: true });
 
   return NextResponse.json({
     added: newAsins,

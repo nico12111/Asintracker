@@ -42,7 +42,7 @@ export async function PATCH(
     where: { productId: params.id, source: "idealo" },
   });
 
-  await refreshProduct(params.id);
+  await refreshProduct(params.id, { comparison: true });
   const product = await prisma.product.findUnique({
     where: { id: params.id },
     include: { offers: true },
@@ -53,12 +53,18 @@ export async function PATCH(
   return NextResponse.json({ product: serializeProduct(product) });
 }
 
-/** POST /api/asins/:id — refresh a single product and return its new state. */
+/**
+ * POST /api/asins/:id — refresh a single product and return its new state.
+ * By default only Amazon/Keepa data is refreshed (cheap). Pass ?comparison=1
+ * to also re-query idealo (uses the limited third-party API quota).
+ */
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
-  await refreshProduct(params.id);
+  const comparison =
+    new URL(req.url).searchParams.get("comparison") === "1";
+  await refreshProduct(params.id, { comparison });
   const product = await prisma.product.findUnique({
     where: { id: params.id },
     include: { offers: true },

@@ -174,10 +174,25 @@ export function ProductTable({
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
   }
 
+  // Amazon/Keepa-only refresh (cheap; does not touch the idealo API quota).
   async function refreshOne(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const res = await fetch(`/api/asins/${id}`, { method: "POST" });
+      const data = await res.json();
+      if (data.product) patch(id, data.product);
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }));
+    }
+  }
+
+  // Explicit idealo refresh (uses one idealo API lookup — limited quota).
+  async function refreshIdealo(id: string) {
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      const res = await fetch(`/api/asins/${id}?comparison=1`, {
+        method: "POST",
+      });
       const data = await res.json();
       if (data.product) patch(id, data.product);
     } finally {
@@ -211,13 +226,13 @@ export function ProductTable({
     if (data.products) setProducts(data.products);
   }
 
-  function refreshSelected() {
+  function refreshSelected(comparison = false) {
     const ids = selected.size > 0 ? [...selected] : products.map((p) => p.id);
     startTransition(async () => {
       await fetch("/api/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids, comparison }),
       });
       await reload();
       router.refresh();
@@ -432,11 +447,12 @@ export function ProductTable({
           ⚗ Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
         </button>
         <button
-          onClick={refreshSelected}
+          onClick={() => refreshSelected(false)}
           disabled={isPending}
+          title="Nur Amazon/Keepa aktualisieren (ohne idealo – schont das API-Limit)"
           className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
         >
-          {isPending ? "Aktualisiere…" : "Preise aktualisieren"}
+          {isPending ? "Aktualisiere…" : "Amazon aktualisieren"}
         </button>
       </div>
 
@@ -530,8 +546,15 @@ export function ProductTable({
       {selected.size > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-sm">
           <span>{selected.size} ausgewählt</span>
-          <button onClick={refreshSelected} className="underline">
-            Aktualisieren
+          <button onClick={() => refreshSelected(false)} className="underline">
+            Amazon aktualisieren
+          </button>
+          <button
+            onClick={() => refreshSelected(true)}
+            className="text-blue-300 underline"
+            title={`idealo für ${selected.size} Produkt(e) neu laden – nutzt ${selected.size} idealo-Abfrage(n)`}
+          >
+            idealo aktualisieren
           </button>
           <button onClick={removeSelected} className="text-rose-400 underline">
             Entfernen
@@ -696,6 +719,14 @@ export function ProductTable({
                       <span className="inline-flex items-center gap-1.5">
                         <OfferCell offer={idealo} demo={idealoDemo} />
                         <button
+                          onClick={() => refreshIdealo(p.id)}
+                          disabled={busy[p.id]}
+                          title="idealo-Preis neu laden (1 API-Abfrage)"
+                          className="text-slate-500 hover:text-emerald-400"
+                        >
+                          ↻
+                        </button>
+                        <button
                           onClick={() => setGtin(p.id, p.manualEan ?? p.ean)}
                           disabled={busy[p.id]}
                           title="GTIN korrigieren"
@@ -705,14 +736,24 @@ export function ProductTable({
                         </button>
                       </span>
                     ) : (
-                      <button
-                        onClick={() => setGtin(p.id, p.manualEan ?? p.ean)}
-                        disabled={busy[p.id]}
-                        title="GTIN für idealo-Suche eintragen"
-                        className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
-                      >
-                        {busy[p.id] ? "…" : "+ GTIN"}
-                      </button>
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => refreshIdealo(p.id)}
+                          disabled={busy[p.id]}
+                          title="Auf idealo suchen (1 API-Abfrage)"
+                          className="rounded border border-slate-700 px-2 py-0.5 text-xs text-blue-300 hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          {busy[p.id] ? "…" : "idealo suchen"}
+                        </button>
+                        <button
+                          onClick={() => setGtin(p.id, p.manualEan ?? p.ean)}
+                          disabled={busy[p.id]}
+                          title="GTIN für idealo-Suche eintragen"
+                          className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          + GTIN
+                        </button>
+                      </span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
