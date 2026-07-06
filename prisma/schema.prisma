@@ -58,6 +58,8 @@ model Offer {
   url        String?
   inStock    Boolean  @default(true)
   matchedName String?
+  /// Source-specific product id (e.g. idealo item id) for faster re-checks.
+  externalId String?
 
   capturedAt DateTime @default(now())
   updatedAt  DateTime @updatedAt

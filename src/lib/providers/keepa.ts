@@ -24,6 +24,7 @@ interface KeepaProduct {
   title?: string;
   brand?: string;
   eanList?: string[];
+  upcList?: string[];
   imagesCSV?: string;
   salesRankReference?: number;
   salesRanks?: Record<string, number[]>;
@@ -116,11 +117,16 @@ class KeepaProvider implements AmazonProvider {
         category: null,
         imageUrl: null,
         ean: null,
+        eans: [],
         salesRank: null,
         priceCents: null,
         mock: false,
       };
     }
+
+    const eans = [...(product.eanList ?? []), ...(product.upcList ?? [])].filter(
+      Boolean,
+    );
 
     return {
       asin,
@@ -128,7 +134,8 @@ class KeepaProvider implements AmazonProvider {
       brand: product.brand ?? null,
       category: pickCategory(product),
       imageUrl: firstImageUrl(product.imagesCSV),
-      ean: product.eanList?.[0] ?? null,
+      ean: eans[0] ?? null,
+      eans,
       salesRank: pickSalesRank(product),
       priceCents: pickPriceCents(product.stats),
       mock: false,
@@ -136,13 +143,15 @@ class KeepaProvider implements AmazonProvider {
   }
 
   private mockProduct(asin: string): AmazonProductData {
+    const ean = mockEan(asin);
     return {
       asin,
       title: mockTitle(asin),
       brand: "DemoBrand",
       category: mockCategory(asin),
       imageUrl: null,
-      ean: mockEan(asin),
+      ean,
+      eans: [ean],
       salesRank: mockSalesRank(asin),
       priceCents: mockAmazonPriceCents(asin),
       mock: true,

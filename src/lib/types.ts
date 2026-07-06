@@ -9,7 +9,10 @@ export interface AmazonProductData {
   brand: string | null;
   category: string | null;
   imageUrl: string | null;
+  /** Primary GTIN/EAN (for display/storage). */
   ean: string | null;
+  /** All GTIN/EAN codes Keepa knows for this product (for matching). */
+  eans: string[];
   /** Amazon Best Sellers Rank in the main category. */
   salesRank: number | null;
   /** Buy-Box / current sell price in cents, or null if unknown. */
@@ -25,6 +28,8 @@ export interface ComparisonOffer {
   url: string | null;
   inStock: boolean;
   matchedName: string | null;
+  /** Source-specific product id (e.g. idealo item id) for faster re-checks. */
+  externalId?: string | null;
   /** True when this is demo/mock data. */
   mock: boolean;
 }
@@ -32,8 +37,13 @@ export interface ComparisonOffer {
 /** Query passed to a comparison provider to find the same product. */
 export interface ComparisonQuery {
   asin: string;
+  /** Primary GTIN/EAN. */
   ean: string | null;
+  /** All known GTIN/EAN codes to try when matching. */
+  eans: string[];
   title: string | null;
+  /** Previously resolved idealo item id (skip the search when present). */
+  idealoItemId?: string | null;
 }
 
 export interface AmazonProvider {

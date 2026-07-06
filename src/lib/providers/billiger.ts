@@ -60,7 +60,7 @@ class BilligerProvider implements ComparisonProvider {
       return this.mockOffer(query);
     }
 
-    const term = query.ean || query.title;
+    const term = query.ean || query.eans[0] || query.title;
     if (!term) return null;
 
     const url = new URL(`${env.billiger.apiUrl}/search`);

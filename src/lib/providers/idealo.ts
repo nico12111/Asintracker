@@ -26,6 +26,9 @@ const IDEALO_DATA = {
   paths: {
     searchByGtin: process.env.IDEALO_PATH_GTIN?.trim() || "/search-by-gtin",
     searchByTerm: process.env.IDEALO_PATH_TERM?.trim() || "/search-by-term",
+    // Best-guess for the "Start search by id" endpoint (resilient: falls back
+    // to GTIN/title if it 404s). Confirm/override via IDEALO_PATH_ID.
+    searchById: process.env.IDEALO_PATH_ID?.trim() || "/search-by-id",
     // Poll base; the job id is appended as a path segment: /poll-job/<jobId>
     poll: process.env.IDEALO_PATH_POLL?.trim() || "/poll-job",
   },
@@ -114,6 +117,7 @@ interface RawOffer {
   euro: number;
   url: string | null;
   name: string | null;
+  id?: string | null;
 }
 
 /** Walk the poll response and collect every object that carries a price. */
@@ -157,6 +161,7 @@ interface IdealoDataOffer {
   availability_code?: string;
 }
 interface IdealoDataContent {
+  id?: string | number;
   name?: string;
   url?: string;
   price_min?: number;
@@ -200,7 +205,12 @@ function parsePoll(json: unknown): RawOffer | null {
       if (euro == null) continue;
 
       if (best == null || euro < best.euro) {
-        best = { euro, url: c.url ?? null, name: c.name ?? null };
+        best = {
+          euro,
+          url: c.url ?? null,
+          name: c.name ?? null,
+          id: c.id != null ? String(c.id) : null,
+        };
       }
     }
     if (best) return best;
@@ -239,6 +249,24 @@ function buildHeaders(contentType?: string): Record<string, string> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Build an ordered, de-duplicated list of GTIN candidates to try on idealo.
+ * Normalises to digits and adds UPC-A <-> EAN-13 variants, since Keepa and
+ * idealo don't always agree on the exact code form.
+ */
+function gtinCandidates(eans: string[], primary: string | null): string[] {
+  const set = new Set<string>();
+  const source = [primary, ...eans].filter(Boolean) as string[];
+  for (const raw of source) {
+    const e = raw.replace(/\D/g, "");
+    if (!e) continue;
+    set.add(e);
+    if (e.length === 12) set.add("0" + e); // UPC-A -> EAN-13
+    if (e.length === 13 && e.startsWith("0")) set.add(e.slice(1)); // EAN-13 -> UPC-A
+  }
+  return [...set].slice(0, 6);
+}
+
 class IdealoProvider implements ComparisonProvider {
   readonly source = "idealo" as const;
 
@@ -249,10 +277,26 @@ class IdealoProvider implements ComparisonProvider {
   async findBestOffer(query: ComparisonQuery): Promise<ComparisonOffer | null> {
     if (!this.enabled) return this.mockOffer(query);
 
-    // Try the exact GTIN first; if it yields no offer, fall back to the title.
     let best: RawOffer | null = null;
-    if (query.ean) best = await this.searchAndPoll("gtin", query.ean);
-    if (!best && query.title) best = await this.searchAndPoll("term", query.title);
+
+    // 1) Fastest path: we already resolved the idealo item id before.
+    if (query.idealoItemId) {
+      best = await this.searchAndPoll("id", query.idealoItemId);
+    }
+
+    // 2) Try every known GTIN/EAN (incl. UPC<->EAN-13 variants).
+    if (!best) {
+      for (const gtin of gtinCandidates(query.eans, query.ean)) {
+        best = await this.searchAndPoll("gtin", gtin);
+        if (best) break;
+      }
+    }
+
+    // 3) Last resort: search by product title.
+    if (!best && query.title) {
+      best = await this.searchAndPoll("term", query.title);
+    }
+
     if (!best) return null;
 
     return {
@@ -261,31 +305,43 @@ class IdealoProvider implements ComparisonProvider {
       url: best.url,
       inStock: true,
       matchedName: best.name,
+      externalId: best.id ?? null,
       mock: false,
     };
   }
 
-  /** Start a search of the given kind, poll for results, return cheapest. */
+  /**
+   * Start a search of the given kind, poll for results, return cheapest.
+   * Resilient: any error (e.g. an unsupported endpoint) resolves to null so
+   * the caller can fall through to the next strategy.
+   */
   private async searchAndPoll(
-    kind: "gtin" | "term",
+    kind: "gtin" | "term" | "id",
     value: string,
   ): Promise<RawOffer | null> {
-    const jobId = await this.startSearch(kind, value);
-    if (!jobId) return null;
-    const results = await this.pollResults(jobId);
-    if (!results) return null;
-    return parsePoll(results);
+    try {
+      const jobId = await this.startSearch(kind, value);
+      if (!jobId) return null;
+      const results = await this.pollResults(jobId);
+      if (!results) return null;
+      return parsePoll(results);
+    } catch (err) {
+      console.error(`[idealo] ${kind} search failed for "${value}":`, err);
+      return null;
+    }
   }
 
   /** Kick off a search job and return its id. */
   private async startSearch(
-    kind: "gtin" | "term",
+    kind: "gtin" | "term" | "id",
     value: string,
   ): Promise<string | null> {
     const path =
       kind === "gtin"
         ? IDEALO_DATA.paths.searchByGtin
-        : IDEALO_DATA.paths.searchByTerm;
+        : kind === "id"
+          ? IDEALO_DATA.paths.searchById
+          : IDEALO_DATA.paths.searchByTerm;
 
     // The API expects an x-www-form-urlencoded body with a lowercase country.
     const body = new URLSearchParams({
@@ -333,11 +389,12 @@ class IdealoProvider implements ComparisonProvider {
 
   private mockOffer(query: ComparisonQuery): ComparisonOffer {
     const amazon = mockAmazonPriceCents(query.asin);
+    const ean = query.ean ?? query.eans[0] ?? null;
     return {
       source: this.source,
       priceCents: mockComparisonPriceCents(amazon, query.asin, this.source),
-      url: query.ean
-        ? `https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q=${query.ean}`
+      url: ean
+        ? `https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q=${ean}`
         : null,
       inStock: true,
       matchedName: query.title,

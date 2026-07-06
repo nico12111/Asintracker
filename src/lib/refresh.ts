@@ -7,15 +7,24 @@ import type { ComparisonQuery } from "./types";
  * Every fetch is isolated so one failing provider never blocks the others.
  */
 export async function refreshProduct(productId: string): Promise<void> {
-  const product = await prisma.product.findUnique({ where: { id: productId } });
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { offers: true },
+  });
   if (!product) throw new Error(`Product ${productId} not found`);
+
+  // Reuse a previously resolved idealo item id to skip the search step.
+  const idealoItemId =
+    product.offers.find((o) => o.source === "idealo")?.externalId ?? null;
 
   // 1) Amazon data via Keepa.
   let ean = product.ean;
+  let eans: string[] = product.ean ? [product.ean] : [];
   let title = product.title;
   try {
     const amazon = await amazonProvider.fetchProduct(product.asin);
     ean = amazon.ean ?? ean;
+    if (amazon.eans.length) eans = amazon.eans;
     title = amazon.title ?? title;
 
     await prisma.product.update({
@@ -46,7 +55,13 @@ export async function refreshProduct(productId: string): Promise<void> {
   }
 
   // 2) Comparison sources.
-  const query: ComparisonQuery = { asin: product.asin, ean, title };
+  const query: ComparisonQuery = {
+    asin: product.asin,
+    ean,
+    eans,
+    title,
+    idealoItemId,
+  };
 
   await Promise.all(
     comparisonProviders.map(async (provider) => {
@@ -74,12 +89,14 @@ export async function refreshProduct(productId: string): Promise<void> {
             url: offer.url,
             inStock: offer.inStock,
             matchedName: offer.matchedName,
+            externalId: offer.externalId ?? null,
           },
           update: {
             priceCents: offer.priceCents,
             url: offer.url,
             inStock: offer.inStock,
             matchedName: offer.matchedName,
+            externalId: offer.externalId ?? undefined,
             capturedAt: new Date(),
           },
         });
