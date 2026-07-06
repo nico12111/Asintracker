@@ -31,6 +31,8 @@ export function UploadForm() {
         } bereits vorhanden (${data.total} erkannt).`,
       );
       setText("");
+      // Refresh the server component so the "Bereits getrackt" list updates.
+      router.refresh();
     });
   }
 
