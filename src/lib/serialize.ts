@@ -21,6 +21,7 @@ export interface ProductDTO {
   category: string | null;
   imageUrl: string | null;
   ean: string | null;
+  manualEan: string | null;
   salesRank: number | null;
   amazonPriceCents: number | null;
   offers: OfferDTO[];
@@ -61,6 +62,7 @@ export function serializeProduct(product: ProductWithOffers): ProductDTO {
     category: product.category,
     imageUrl: product.imageUrl,
     ean: product.ean,
+    manualEan: product.manualEan,
     salesRank: product.salesRank,
     amazonPriceCents: product.amazonPriceCents,
     offers,

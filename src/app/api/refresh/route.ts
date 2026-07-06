@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { refreshProducts } from "@/lib/refresh";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const bodySchema = z.object({ ids: z.array(z.string()).optional() });
 

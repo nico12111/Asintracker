@@ -28,6 +28,9 @@ model Product {
   /// Amazon Best Sellers Rank (BSR) in the product's main category.
   salesRank Int?
 
+  /// User-provided GTIN/EAN override, used first when matching on idealo.
+  manualEan String?
+
   /// Current Amazon Buy-Box / sell price in cents (EUR). null = unknown.
   amazonPriceCents Int?
 

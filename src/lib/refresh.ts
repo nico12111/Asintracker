@@ -19,12 +19,12 @@ export async function refreshProduct(productId: string): Promise<void> {
 
   // 1) Amazon data via Keepa.
   let ean = product.ean;
-  let eans: string[] = product.ean ? [product.ean] : [];
+  let keepaEans: string[] = [];
   let title = product.title;
   try {
     const amazon = await amazonProvider.fetchProduct(product.asin);
     ean = amazon.ean ?? ean;
-    if (amazon.eans.length) eans = amazon.eans;
+    keepaEans = amazon.eans;
     title = amazon.title ?? title;
 
     await prisma.product.update({
@@ -54,10 +54,13 @@ export async function refreshProduct(productId: string): Promise<void> {
     console.error(`[refresh] Amazon fetch failed for ${product.asin}:`, err);
   }
 
-  // 2) Comparison sources.
+  // 2) Comparison sources. Manual GTIN override is tried first, then Keepa's.
+  const eans = [product.manualEan, ean, ...keepaEans].filter(
+    (e): e is string => Boolean(e),
+  );
   const query: ComparisonQuery = {
     asin: product.asin,
-    ean,
+    ean: product.manualEan ?? ean,
     eans,
     title,
     idealoItemId,

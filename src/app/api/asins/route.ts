@@ -6,6 +6,7 @@ import { refreshProducts } from "@/lib/refresh";
 import { serializeProduct } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const bodySchema = z.object({
   text: z.string().optional(),

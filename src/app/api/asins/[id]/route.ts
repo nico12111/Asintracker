@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { refreshProduct } from "@/lib/refresh";
 import { serializeProduct } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /** DELETE /api/asins/:id — stop tracking a product. */
 export async function DELETE(
@@ -12,6 +14,43 @@ export async function DELETE(
 ) {
   await prisma.product.delete({ where: { id: params.id } }).catch(() => null);
   return NextResponse.json({ ok: true });
+}
+
+const patchSchema = z.object({ ean: z.string() });
+
+/**
+ * PATCH /api/asins/:id — set a manual GTIN/EAN override, then re-match idealo.
+ * Clears the cached idealo offer so the new GTIN is used from scratch.
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
+  const json = await req.json().catch(() => ({}));
+  const parsed = patchSchema.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+  const manualEan = parsed.data.ean.replace(/\s+/g, "").trim() || null;
+
+  await prisma.product.update({
+    where: { id: params.id },
+    data: { manualEan },
+  });
+  // Drop the stale idealo offer so the new GTIN resolves fresh.
+  await prisma.offer.deleteMany({
+    where: { productId: params.id, source: "idealo" },
+  });
+
+  await refreshProduct(params.id);
+  const product = await prisma.product.findUnique({
+    where: { id: params.id },
+    include: { offers: true },
+  });
+  if (!product) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json({ product: serializeProduct(product) });
 }
 
 /** POST /api/asins/:id — refresh a single product and return its new state. */

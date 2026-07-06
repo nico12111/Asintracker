@@ -117,6 +117,26 @@ export function ProductTable({
     }
   }
 
+  async function setGtin(id: string, current: string | null) {
+    const input = window.prompt(
+      "GTIN/EAN für die idealo-Suche eintragen (13-stellig):",
+      current ?? "",
+    );
+    if (input == null) return;
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      const res = await fetch(`/api/asins/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ean: input }),
+      });
+      const data = await res.json();
+      if (data.product) patch(id, data.product);
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }));
+    }
+  }
+
   async function reload() {
     const res = await fetch("/api/asins");
     const data = await res.json();
@@ -498,7 +518,28 @@ export function ProductTable({
                     {formatEuro(p.amazonPriceCents)}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <OfferCell offer={idealo} demo={idealoDemo} />
+                    {idealo ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <OfferCell offer={idealo} demo={idealoDemo} />
+                        <button
+                          onClick={() => setGtin(p.id, p.manualEan ?? p.ean)}
+                          disabled={busy[p.id]}
+                          title="GTIN korrigieren"
+                          className="text-slate-500 hover:text-emerald-400"
+                        >
+                          ✎
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setGtin(p.id, p.manualEan ?? p.ean)}
+                        disabled={busy[p.id]}
+                        title="GTIN für idealo-Suche eintragen"
+                        className="rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        {busy[p.id] ? "…" : "+ GTIN"}
+                      </button>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <OfferCell offer={billiger} demo={billigerDemo} />
