@@ -53,6 +53,10 @@ export default async function DashboardPage() {
         <ProductTable
           initialProducts={products}
           defaultSettings={defaultSettings}
+          liveSources={{
+            idealo: env.idealo.enabled,
+            billiger: env.billiger.enabled,
+          }}
         />
       )}
     </div>

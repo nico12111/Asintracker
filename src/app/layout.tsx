@@ -18,7 +18,7 @@ export default function RootLayout({
       <body>
         <div className="min-h-screen">
           <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur">
-            <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+            <div className="flex w-full items-center justify-between px-6 py-3">
               <Link href="/" className="flex items-center gap-2 font-semibold">
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-slate-950">
                   A
@@ -41,7 +41,7 @@ export default function RootLayout({
               </nav>
             </div>
           </header>
-          <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+          <main className="w-full px-6 py-6">{children}</main>
         </div>
       </body>
     </html>

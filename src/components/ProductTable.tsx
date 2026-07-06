@@ -33,9 +33,11 @@ function offerFor(p: ProductDTO, source: "idealo" | "billiger") {
 export function ProductTable({
   initialProducts,
   defaultSettings,
+  liveSources,
 }: {
   initialProducts: ProductDTO[];
   defaultSettings: MarginSettings;
+  liveSources: { idealo: boolean; billiger: boolean };
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -385,7 +387,7 @@ export function ProductTable({
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-slate-800">
-        <table className="w-full min-w-[1100px] text-sm">
+        <table className="w-full min-w-[1240px] text-sm">
           <thead className="bg-slate-900 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-3">
@@ -413,7 +415,19 @@ export function ProductTable({
             {pageItems.map((p) => {
               const idealo = offerFor(p, "idealo");
               const billiger = offerFor(p, "billiger");
+              const idealoDemo = !liveSources.idealo;
+              const billigerDemo = !liveSources.billiger;
               const profit = p.margin.profitCents;
+
+              // Which LIVE source is cheaper (demo prices are not trusted).
+              const live: Array<["idealo" | "billiger", number]> = [];
+              if (idealo && !idealoDemo) live.push(["idealo", idealo.priceCents]);
+              if (billiger && !billigerDemo)
+                live.push(["billiger", billiger.priceCents]);
+              const cheaper =
+                live.length > 0
+                  ? live.reduce((a, b) => (b[1] < a[1] ? b : a))[0]
+                  : null;
               return (
                 <tr
                   key={p.id}
@@ -484,10 +498,10 @@ export function ProductTable({
                     {formatEuro(p.amazonPriceCents)}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <OfferCell offer={idealo} />
+                    <OfferCell offer={idealo} demo={idealoDemo} />
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <OfferCell offer={billiger} />
+                    <OfferCell offer={billiger} demo={billigerDemo} />
                   </td>
                   <td className="px-3 py-2 text-right font-medium">
                     {formatEuro(p.bestOffer?.priceCents ?? null)}
@@ -516,18 +530,21 @@ export function ProductTable({
                     {formatPct(p.margin.roiPct)}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex justify-end gap-1.5">
-                      {p.bestOffer?.url && (
-                        <a
-                          href={p.bestOffer.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Beim günstigsten Anbieter kaufen"
-                          className="rounded border border-slate-700 px-2 py-1 text-xs hover:bg-slate-800"
-                        >
-                          Kaufen
-                        </a>
-                      )}
+                    <div className="flex items-center justify-end gap-1.5">
+                      <BuyButton
+                        label="idealo"
+                        variant="blue"
+                        offer={idealo}
+                        demo={idealoDemo}
+                        cheaper={cheaper === "idealo"}
+                      />
+                      <BuyButton
+                        label="billiger.de"
+                        variant="white"
+                        offer={billiger}
+                        demo={billigerDemo}
+                        cheaper={cheaper === "billiger"}
+                      />
                       <button
                         onClick={() => refreshOne(p.id)}
                         disabled={busy[p.id]}
@@ -632,16 +649,36 @@ function NumberField({
 
 function OfferCell({
   offer,
+  demo,
 }: {
   offer: ProductDTO["offers"][number] | null;
+  demo?: boolean;
 }) {
   if (!offer) return <span className="text-slate-600">—</span>;
-  const content = (
-    <span className={offer.inStock ? "" : "text-slate-500 line-through"}>
+  const price = (
+    <span
+      className={
+        offer.inStock
+          ? demo
+            ? "text-amber-400/80"
+            : ""
+          : "text-slate-500 line-through"
+      }
+    >
       {formatEuro(offer.priceCents)}
     </span>
   );
-  return offer.url ? (
+  const content = demo ? (
+    <span className="inline-flex items-center gap-1">
+      {price}
+      <span className="rounded bg-amber-500/20 px-1 text-[9px] font-medium text-amber-400">
+        DEMO
+      </span>
+    </span>
+  ) : (
+    price
+  );
+  return offer.url && !demo ? (
     <a
       href={offer.url}
       target="_blank"
@@ -652,5 +689,68 @@ function OfferCell({
     </a>
   ) : (
     content
+  );
+}
+
+/** Direct-buy button for one source. Blue = idealo, white = billiger.de. */
+function BuyButton({
+  label,
+  variant,
+  offer,
+  demo,
+  cheaper,
+}: {
+  label: string;
+  variant: "blue" | "white";
+  offer: ProductDTO["offers"][number] | null;
+  demo?: boolean;
+  cheaper?: boolean;
+}) {
+  const base =
+    "relative inline-flex flex-col items-center rounded-md px-2.5 py-1 text-xs font-medium leading-tight min-w-[74px]";
+  const palette =
+    variant === "blue"
+      ? "bg-blue-600 text-white hover:bg-blue-500"
+      : "bg-white text-slate-900 hover:bg-slate-100 border border-slate-300";
+
+  // No offer, or a demo/mock price → not a real buy target.
+  if (!offer || demo || !offer.url) {
+    return (
+      <span
+        title={
+          demo
+            ? `${label}: Demo-Daten (keine echte API konfiguriert)`
+            : `${label}: kein Angebot gefunden`
+        }
+        className={`${base} ${palette} cursor-not-allowed opacity-40`}
+      >
+        <span>{label}</span>
+        <span className="text-[10px]">
+          {demo ? "Demo" : offer ? formatEuro(offer.priceCents) : "—"}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={offer.url}
+      target="_blank"
+      rel="noreferrer"
+      title={`Bei ${label} kaufen`}
+      className={`${base} ${palette} ${
+        cheaper ? "ring-2 ring-emerald-400" : ""
+      }`}
+    >
+      <span>{label}</span>
+      <span className="text-[10px] font-semibold">
+        {formatEuro(offer.priceCents)}
+      </span>
+      {cheaper && (
+        <span className="absolute -top-2 -right-2 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-bold text-slate-950 shadow">
+          günstiger
+        </span>
+      )}
+    </a>
   );
 }

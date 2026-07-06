@@ -249,20 +249,10 @@ class IdealoProvider implements ComparisonProvider {
   async findBestOffer(query: ComparisonQuery): Promise<ComparisonOffer | null> {
     if (!this.enabled) return this.mockOffer(query);
 
-    // 1) Start a search — prefer the exact GTIN, else the product title.
-    const jobId = query.ean
-      ? await this.startSearch("gtin", query.ean)
-      : query.title
-        ? await this.startSearch("term", query.title)
-        : null;
-    if (!jobId) return null;
-
-    // 2) Poll until results arrive.
-    const results = await this.pollResults(jobId);
-    if (!results) return null;
-
-    // 3) Cheapest available offer (total incl. shipping).
-    const best = parsePoll(results);
+    // Try the exact GTIN first; if it yields no offer, fall back to the title.
+    let best: RawOffer | null = null;
+    if (query.ean) best = await this.searchAndPoll("gtin", query.ean);
+    if (!best && query.title) best = await this.searchAndPoll("term", query.title);
     if (!best) return null;
 
     return {
@@ -273,6 +263,18 @@ class IdealoProvider implements ComparisonProvider {
       matchedName: best.name,
       mock: false,
     };
+  }
+
+  /** Start a search of the given kind, poll for results, return cheapest. */
+  private async searchAndPoll(
+    kind: "gtin" | "term",
+    value: string,
+  ): Promise<RawOffer | null> {
+    const jobId = await this.startSearch(kind, value);
+    if (!jobId) return null;
+    const results = await this.pollResults(jobId);
+    if (!results) return null;
+    return parsePoll(results);
   }
 
   /** Kick off a search job and return its id. */
