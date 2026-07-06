@@ -143,6 +143,86 @@ function collectOffers(node: unknown, acc: RawOffer[], depth = 0): void {
   }
 }
 
+// ── Precise parser for the Idealo Data poll response ──────────────────────
+// {
+//   status: "finished",
+//   results: [{ content: { name, url, price_min, offers: [{ price, total,
+//               shop_name, shop_url, availability_code }] } }]
+// }
+interface IdealoDataOffer {
+  price?: number;
+  total?: number;
+  shop_name?: string;
+  shop_url?: string;
+  availability_code?: string;
+}
+interface IdealoDataContent {
+  name?: string;
+  url?: string;
+  price_min?: number;
+  offers?: IdealoDataOffer[];
+}
+interface IdealoDataResult {
+  content?: IdealoDataContent;
+  success?: boolean;
+}
+interface IdealoDataPoll {
+  status?: string;
+  results?: IdealoDataResult[];
+}
+
+const TERMINAL = ["finished", "success", "completed", "done"];
+const FAILED = ["failed", "error", "not_found"];
+const PENDING = ["pending", "processing", "running", "queued", "started", "in_progress"];
+
+/** Extract the cheapest available offer from a poll response. */
+function parsePoll(json: unknown): RawOffer | null {
+  const results = (json as IdealoDataPoll)?.results;
+  if (Array.isArray(results)) {
+    let best: RawOffer | null = null;
+    for (const r of results) {
+      const c = r?.content;
+      if (!c) continue;
+
+      let euro: number | null = null;
+      if (Array.isArray(c.offers)) {
+        for (const o of c.offers) {
+          // Prefer total (incl. shipping) as the real purchase cost.
+          const p = typeof o.total === "number" ? o.total : o.price;
+          if (typeof p === "number" && p > 0 && (euro == null || p < euro)) {
+            euro = p;
+          }
+        }
+      }
+      if (euro == null && typeof c.price_min === "number" && c.price_min > 0) {
+        euro = c.price_min;
+      }
+      if (euro == null) continue;
+
+      if (best == null || euro < best.euro) {
+        best = { euro, url: c.url ?? null, name: c.name ?? null };
+      }
+    }
+    if (best) return best;
+  }
+
+  // Fallback: generic sweep for unexpected shapes.
+  const acc: RawOffer[] = [];
+  collectOffers(json, acc);
+  return acc.length ? acc.reduce((a, b) => (b.euro < a.euro ? b : a)) : null;
+}
+
+function pollState(json: unknown): "ready" | "pending" | "failed" {
+  const status = (json as IdealoDataPoll)?.status?.toLowerCase();
+  if (status) {
+    if (PENDING.includes(status)) return "pending";
+    if (FAILED.includes(status)) return "failed";
+    if (TERMINAL.includes(status)) return "ready";
+  }
+  // Unknown/absent status: ready only once offers are present.
+  return parsePoll(json) != null ? "ready" : "pending";
+}
+
 function buildHeaders(contentType?: string): Record<string, string> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (contentType) headers["Content-Type"] = contentType;
@@ -181,11 +261,9 @@ class IdealoProvider implements ComparisonProvider {
     const results = await this.pollResults(jobId);
     if (!results) return null;
 
-    // 3) Cheapest offer found anywhere in the response.
-    const offers: RawOffer[] = [];
-    collectOffers(results, offers);
-    if (offers.length === 0) return null;
-    const best = offers.reduce((a, b) => (b.euro < a.euro ? b : a));
+    // 3) Cheapest available offer (total incl. shipping).
+    const best = parsePoll(results);
+    if (!best) return null;
 
     return {
       source: this.source,
@@ -242,22 +320,13 @@ class IdealoProvider implements ComparisonProvider {
       });
       if (res.ok) {
         const json = (await res.json()) as unknown;
-        if (this.hasResults(json)) return json;
+        const state = pollState(json);
+        if (state === "ready") return json;
+        if (state === "failed") return null;
       }
       await sleep(IDEALO_DATA.poll.delayMs);
     }
     return null;
-  }
-
-  /** Heuristic: results are ready once the payload contains any price. */
-  private hasResults(json: unknown): boolean {
-    const status = (json as { status?: string })?.status?.toLowerCase();
-    if (status && ["pending", "processing", "running"].includes(status)) {
-      return false;
-    }
-    const offers: RawOffer[] = [];
-    collectOffers(json, offers);
-    return offers.length > 0;
   }
 
   private mockOffer(query: ComparisonQuery): ComparisonOffer {
