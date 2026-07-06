@@ -39,8 +39,13 @@ const IDEALO_DATA = {
     jobId: "job_id",
   },
   poll: {
-    maxAttempts: 8,
-    delayMs: 800,
+    delayMs: 1500,
+    // Overall time budget for one findBestOffer call (serverless maxDuration
+    // is 60s; leave headroom for the Keepa fetch that ran before this).
+    budgetMs: 48000,
+    // Cap time spent polling a single job so a stuck job still leaves time to
+    // try the next candidate.
+    perJobMs: 25000,
   },
 };
 
@@ -277,24 +282,26 @@ class IdealoProvider implements ComparisonProvider {
   async findBestOffer(query: ComparisonQuery): Promise<ComparisonOffer | null> {
     if (!this.enabled) return this.mockOffer(query);
 
+    const deadline = Date.now() + IDEALO_DATA.poll.budgetMs;
     let best: RawOffer | null = null;
 
     // 1) Fastest path: we already resolved the idealo item id before.
     if (query.idealoItemId) {
-      best = await this.searchAndPoll("id", query.idealoItemId);
+      best = await this.searchAndPoll("id", query.idealoItemId, deadline);
     }
 
     // 2) Try every known GTIN/EAN (incl. UPC<->EAN-13 variants).
     if (!best) {
       for (const gtin of gtinCandidates(query.eans, query.ean)) {
-        best = await this.searchAndPoll("gtin", gtin);
+        if (Date.now() > deadline) break;
+        best = await this.searchAndPoll("gtin", gtin, deadline);
         if (best) break;
       }
     }
 
     // 3) Last resort: search by product title.
-    if (!best && query.title) {
-      best = await this.searchAndPoll("term", query.title);
+    if (!best && query.title && Date.now() < deadline) {
+      best = await this.searchAndPoll("term", query.title, deadline);
     }
 
     if (!best) return null;
@@ -314,6 +321,7 @@ class IdealoProvider implements ComparisonProvider {
   async debug(query: ComparisonQuery): Promise<unknown> {
     if (!this.enabled) return { enabled: false };
     const candidates = gtinCandidates(query.eans, query.ean);
+    const deadline = Date.now() + IDEALO_DATA.poll.budgetMs;
     const attempts: unknown[] = [];
     for (const gtin of candidates) {
       const step: Record<string, unknown> = { gtin };
@@ -321,7 +329,7 @@ class IdealoProvider implements ComparisonProvider {
         const jobId = await this.startSearch("gtin", gtin);
         step.jobId = jobId;
         if (jobId) {
-          const results = await this.pollResults(jobId);
+          const results = await this.pollResults(jobId, deadline);
           step.gotResults = Boolean(results);
           step.parsedOffer = results ? parsePoll(results) : null;
           step.rawSample = results
@@ -345,11 +353,12 @@ class IdealoProvider implements ComparisonProvider {
   private async searchAndPoll(
     kind: "gtin" | "term" | "id",
     value: string,
+    deadline: number,
   ): Promise<RawOffer | null> {
     try {
       const jobId = await this.startSearch(kind, value);
       if (!jobId) return null;
-      const results = await this.pollResults(jobId);
+      const results = await this.pollResults(jobId, deadline);
       if (!results) return null;
       return parsePoll(results);
     } catch (err) {
@@ -391,13 +400,18 @@ class IdealoProvider implements ComparisonProvider {
     return data.job_id ?? data.jobId ?? null;
   }
 
-  /** Poll /poll-job/<jobId> until it stops reporting "pending". */
-  private async pollResults(jobId: string): Promise<unknown | null> {
+  /** Poll /poll-job/<jobId> until results are ready, a time budget is hit. */
+  private async pollResults(
+    jobId: string,
+    deadline: number,
+  ): Promise<unknown | null> {
     const pollUrl = `${env.idealo.apiUrl}${IDEALO_DATA.paths.poll}/${encodeURIComponent(
       jobId,
     )}`;
+    // Don't spend the whole global budget on a single stuck job.
+    const jobDeadline = Math.min(deadline, Date.now() + IDEALO_DATA.poll.perJobMs);
 
-    for (let attempt = 0; attempt < IDEALO_DATA.poll.maxAttempts; attempt++) {
+    while (Date.now() < jobDeadline) {
       const res = await fetch(pollUrl, {
         method: "GET",
         headers: buildHeaders("application/json"),
