@@ -30,7 +30,11 @@ export async function GET(req: Request) {
     brand: amazon.brand,
   };
 
-  const idealo = await idealoProvider.debug(query);
+  // idealo costs real API quota (100/month plans) — only run when asked.
+  const runIdealo = new URL(req.url).searchParams.get("idealo") === "1";
+  const idealo = runIdealo
+    ? await idealoProvider.debug(query)
+    : { skipped: "idealo-Abfrage nur mit &idealo=1 (schont das API-Limit)" };
 
   return NextResponse.json({
     keepa: {

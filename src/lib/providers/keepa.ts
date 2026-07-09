@@ -106,6 +106,8 @@ class KeepaProvider implements AmazonProvider {
     // A day interval makes Keepa include avg30/avg90 + salesRankDrops30/90.
     url.searchParams.set("stats", "90");
     url.searchParams.set("buybox", "1");
+    // Include rating & review-count history so stats.current[16]/[17] are set.
+    url.searchParams.set("rating", "1");
 
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) {

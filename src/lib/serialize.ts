@@ -1,6 +1,14 @@
 import type { Offer, Product } from "@prisma/client";
 import { computeMargin, type MarginResult } from "./margin";
+import { env } from "./env";
 import type { PriceSource } from "./types";
+
+/** Only offers from configured (live) sources may influence prices/margins. */
+function sourceEnabled(source: string): boolean {
+  if (source === "idealo") return env.idealo.enabled;
+  if (source === "billiger") return env.billiger.enabled;
+  return false;
+}
 
 export type ProductWithOffers = Product & { offers: Offer[] };
 
@@ -39,7 +47,11 @@ export interface ProductDTO {
 }
 
 export function serializeProduct(product: ProductWithOffers): ProductDTO {
-  const offers: OfferDTO[] = product.offers.map((o) => ({
+  // Drop stale offers from sources that are no longer configured (e.g. old
+  // demo data), so they can't pollute Best-EK and the margin.
+  const realOffers = product.offers.filter((o) => sourceEnabled(o.source));
+
+  const offers: OfferDTO[] = realOffers.map((o) => ({
     source: o.source as PriceSource,
     priceCents: o.priceCents,
     url: o.url,
