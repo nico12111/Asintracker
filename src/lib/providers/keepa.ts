@@ -31,7 +31,10 @@ interface KeepaProduct {
   brand?: string;
   eanList?: string[];
   upcList?: string[];
+  /** Legacy field: comma-separated image filenames. */
   imagesCSV?: string;
+  /** Newer field: array of image objects (l = large, m = medium filename). */
+  images?: { l?: string; m?: string; s?: string }[];
   salesRankReference?: number;
   salesRanks?: Record<string, number[]>;
   categoryTree?: { catId: number; name: string }[];
@@ -43,11 +46,14 @@ interface KeepaResponse {
   error?: { message?: string };
 }
 
-function firstImageUrl(imagesCSV?: string): string | null {
-  if (!imagesCSV) return null;
-  const first = imagesCSV.split(",")[0]?.trim();
-  if (!first) return null;
-  return `https://m.media-amazon.com/images/I/${first}`;
+/** Amazon image URL from either the legacy imagesCSV or the new images array. */
+function firstImageUrl(product: KeepaProduct): string | null {
+  const fromCsv = product.imagesCSV?.split(",")[0]?.trim();
+  const fromArray =
+    product.images?.[0]?.l ?? product.images?.[0]?.m ?? product.images?.[0]?.s;
+  const filename = fromCsv || fromArray;
+  if (!filename) return null;
+  return `https://m.media-amazon.com/images/I/${filename}`;
 }
 
 /** Pick a price from a Keepa price array: Buy Box (18) → Amazon (0) → New (1). */
@@ -153,7 +159,7 @@ class KeepaProvider implements AmazonProvider {
       title: product.title ?? null,
       brand: product.brand ?? null,
       category: pickCategory(product),
-      imageUrl: firstImageUrl(product.imagesCSV),
+      imageUrl: firstImageUrl(product),
       ean: eans[0] ?? null,
       eans,
       salesRank: pickSalesRank(product),

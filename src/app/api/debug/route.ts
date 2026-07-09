@@ -46,6 +46,7 @@ export async function GET(req: Request) {
       brand: amazon.brand,
       ean: amazon.ean,
       eans: amazon.eans,
+      imageUrl: amazon.imageUrl,
       amazonPriceCents: amazon.priceCents,
       avgPrice30Cents: amazon.avgPrice30Cents,
       avgPrice90Cents: amazon.avgPrice90Cents,
