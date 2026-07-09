@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { parseAsins } from "@/lib/asin";
-import { refreshProduct } from "@/lib/refresh";
 import { serializeProduct } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -51,18 +50,13 @@ export async function POST(req: Request) {
     newAsins.map((asin) => prisma.product.create({ data: { asin } })),
   );
 
-  // Refresh the newly-added products so the dashboard is populated
-  // immediately. idealo runs per product only while there is time left in the
-  // function budget (60s) — remaining products still get their Keepa data and
-  // can be matched later via "idealo suchen".
-  const deadline = Date.now() + 40_000;
-  for (const p of created) {
-    await refreshProduct(p.id, { comparison: Date.now() < deadline });
-  }
-
+  // Respond immediately — the rows appear in the UI right away. The client
+  // then loads Keepa data for the returned ids in small batches, and idealo
+  // stays a manual per-row action (limited quota).
   return NextResponse.json({
     added: newAsins,
     skipped: [...existingSet],
     total: asins.length,
+    ids: created.map((p) => p.id),
   });
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProductDTO } from "@/lib/serialize";
 import { computeMargin, formatEuro, formatPct } from "@/lib/margin";
+import { refreshIdsInBatches } from "@/lib/client-refresh";
 
 export interface MarginSettings {
   referralFeePct: number;
@@ -299,15 +300,30 @@ export function ProductTable({
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setNotice(
-          `${data.added?.length ?? 0} hinzugefügt · ${data.skipped?.length ?? 0} bereits vorhanden`,
-        );
-        setAddValue("");
-        await reload();
-      } else {
+      if (!res.ok) {
         setNotice(data.error ?? "Fehler beim Hinzufügen.");
+        return;
       }
+
+      // Rows appear instantly; Amazon data streams in batch by batch.
+      setAddValue("");
+      await reload();
+      const ids: string[] = data.ids ?? [];
+      const added = data.added?.length ?? 0;
+      const skipped = data.skipped?.length ?? 0;
+      if (ids.length === 0) {
+        setNotice(`${added} hinzugefügt · ${skipped} bereits vorhanden`);
+        return;
+      }
+      setNotice(`${added} hinzugefügt – lade Amazon-Daten (0/${ids.length})…`);
+      await refreshIdsInBatches(ids, async (done, total) => {
+        await reload();
+        setNotice(
+          done < total
+            ? `${added} hinzugefügt – lade Amazon-Daten (${done}/${total})…`
+            : `${added} hinzugefügt · ${skipped} bereits vorhanden · Amazon-Daten geladen. idealo-Preise per "idealo suchen" in der Zeile.`,
+        );
+      });
     });
   }
 

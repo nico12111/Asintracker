@@ -443,8 +443,9 @@ class IdealoProvider implements ComparisonProvider {
       [IDEALO_DATA.fields.country]: env.idealo.country.toLowerCase(),
     }).toString();
 
-    // Retry on 429 (rate limit) with backoff, respecting Retry-After.
-    for (let attempt = 0; attempt < 4; attempt++) {
+    // Retry once on 429 (covers per-second limits); a hard monthly cap keeps
+    // returning 429, so fail fast instead of stalling the request for ~20s.
+    for (let attempt = 0; attempt < 2; attempt++) {
       const res = await fetch(`${env.idealo.apiUrl}${path}`, {
         method: "POST",
         headers: buildHeaders("application/x-www-form-urlencoded"),
@@ -455,10 +456,9 @@ class IdealoProvider implements ComparisonProvider {
       if (res.status === 429) {
         const retryAfter = Number(res.headers.get("retry-after"));
         const waitMs = Math.min(
-          (Number.isFinite(retryAfter) && retryAfter > 0
-            ? retryAfter
-            : 2 * (attempt + 1)) * 1000,
-          8000,
+          (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 1.5) *
+            1000,
+          3000,
         );
         await sleep(waitMs);
         continue;

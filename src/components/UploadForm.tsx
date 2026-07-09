@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { refreshIdsInBatches } from "@/lib/client-refresh";
 
 export function UploadForm() {
   const router = useRouter();
@@ -25,14 +26,27 @@ export function UploadForm() {
         setError(data.error ?? "Fehler beim Import.");
         return;
       }
-      setResult(
-        `${data.added?.length ?? 0} neu hinzugefügt, ${
-          data.skipped?.length ?? 0
-        } bereits vorhanden (${data.total} erkannt).`,
-      );
+      const added = data.added?.length ?? 0;
+      const skipped = data.skipped?.length ?? 0;
+      const ids: string[] = data.ids ?? [];
       setText("");
-      // Refresh the server component so the "Bereits getrackt" list updates.
+      // The list updates instantly; Amazon data streams in batch by batch.
       router.refresh();
+      if (ids.length > 0) {
+        setResult(`${added} hinzugefügt – lade Amazon-Daten (0/${ids.length})…`);
+        await refreshIdsInBatches(ids, (done, total) => {
+          setResult(
+            done < total
+              ? `${added} hinzugefügt – lade Amazon-Daten (${done}/${total})…`
+              : `${added} neu hinzugefügt, ${skipped} bereits vorhanden (${data.total} erkannt). Amazon-Daten geladen.`,
+          );
+          router.refresh();
+        });
+      } else {
+        setResult(
+          `${added} neu hinzugefügt, ${skipped} bereits vorhanden (${data.total} erkannt).`,
+        );
+      }
     });
   }
 
