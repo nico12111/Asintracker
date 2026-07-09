@@ -186,6 +186,23 @@ export function ProductTable({
     }
   }
 
+  function showProviderErrors(
+    errors: { source: string; message: string }[] | undefined,
+    foundOffer: boolean,
+  ) {
+    if (errors?.length) {
+      setNotice(
+        errors.map((e) => `${e.source}: ${e.message}`).join(" · "),
+      );
+    } else if (!foundOffer) {
+      setNotice(
+        "idealo: kein Angebot gefunden (Produkt evtl. nicht auf idealo gelistet – ggf. GTIN per „+ GTIN" setzen).",
+      );
+    } else {
+      setNotice(null);
+    }
+  }
+
   // Explicit idealo refresh (uses one idealo API lookup — limited quota).
   async function refreshIdealo(id: string) {
     setBusy((b) => ({ ...b, [id]: true }));
@@ -194,7 +211,13 @@ export function ProductTable({
         method: "POST",
       });
       const data = await res.json();
-      if (data.product) patch(id, data.product);
+      if (data.product) {
+        patch(id, data.product);
+        showProviderErrors(
+          data.errors,
+          data.product.offers?.some((o: { source: string }) => o.source === "idealo"),
+        );
+      }
     } finally {
       setBusy((b) => ({ ...b, [id]: false }));
     }
@@ -214,7 +237,13 @@ export function ProductTable({
         body: JSON.stringify({ ean: input }),
       });
       const data = await res.json();
-      if (data.product) patch(id, data.product);
+      if (data.product) {
+        patch(id, data.product);
+        showProviderErrors(
+          data.errors,
+          data.product.offers?.some((o: { source: string }) => o.source === "idealo"),
+        );
+      }
     } finally {
       setBusy((b) => ({ ...b, [id]: false }));
     }

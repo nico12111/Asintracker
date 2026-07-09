@@ -11,14 +11,21 @@ export interface RefreshOptions {
   comparison?: boolean;
 }
 
+export interface RefreshResult {
+  /** Human-readable provider errors (e.g. idealo rate limit) for the UI. */
+  errors: { source: string; message: string }[];
+}
+
 /**
  * Refresh Amazon (Keepa) data and, if requested, the comparison offers.
- * Every fetch is isolated so one failing provider never blocks the others.
+ * Every fetch is isolated so one failing provider never blocks the others;
+ * failures are collected and reported instead of being swallowed.
  */
 export async function refreshProduct(
   productId: string,
   options: RefreshOptions = {},
-): Promise<void> {
+): Promise<RefreshResult> {
+  const errors: RefreshResult["errors"] = [];
   const product = await prisma.product.findUnique({
     where: { id: productId },
     include: { offers: true },
@@ -73,10 +80,11 @@ export async function refreshProduct(
     }
   } catch (err) {
     console.error(`[refresh] Amazon fetch failed for ${product.asin}:`, err);
+    errors.push({ source: "keepa", message: String((err as Error).message ?? err) });
   }
 
   // 2) Comparison sources (only when explicitly requested — saves API quota).
-  if (!options.comparison) return;
+  if (!options.comparison) return { errors };
 
   // Manual GTIN override is tried first, then Keepa's.
   const eans = [product.manualEan, ean, ...keepaEans].filter(
@@ -141,9 +149,15 @@ export async function refreshProduct(
           `[refresh] ${provider.source} fetch failed for ${product.asin}:`,
           err,
         );
+        errors.push({
+          source: provider.source,
+          message: String((err as Error).message ?? err),
+        });
       }
     }),
   );
+
+  return { errors };
 }
 
 /** Refresh a batch of products sequentially (gentle on rate limits). */

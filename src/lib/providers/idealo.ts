@@ -412,6 +412,14 @@ class IdealoProvider implements ComparisonProvider {
       if (!results) return null;
       return parsePoll(results);
     } catch (err) {
+      const msg = String((err as Error).message ?? err);
+      // A rate limit hits every follow-up request too — surface it to the UI
+      // instead of silently showing "no offer".
+      if (msg.includes("429")) {
+        throw new Error(
+          "idealo-API-Limit erreicht (429) – RapidAPI-Kontingent prüfen/upgraden",
+        );
+      }
       console.error(`[idealo] ${kind} search failed for "${value}":`, err);
       return null;
     }

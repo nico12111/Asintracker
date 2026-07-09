@@ -42,7 +42,7 @@ export async function PATCH(
     where: { productId: params.id, source: "idealo" },
   });
 
-  await refreshProduct(params.id, { comparison: true });
+  const result = await refreshProduct(params.id, { comparison: true });
   const product = await prisma.product.findUnique({
     where: { id: params.id },
     include: { offers: true },
@@ -50,7 +50,10 @@ export async function PATCH(
   if (!product) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json({ product: serializeProduct(product) });
+  return NextResponse.json({
+    product: serializeProduct(product),
+    errors: result.errors,
+  });
 }
 
 /**
@@ -64,7 +67,7 @@ export async function POST(
 ) {
   const comparison =
     new URL(req.url).searchParams.get("comparison") === "1";
-  await refreshProduct(params.id, { comparison });
+  const result = await refreshProduct(params.id, { comparison });
   const product = await prisma.product.findUnique({
     where: { id: params.id },
     include: { offers: true },
@@ -72,5 +75,8 @@ export async function POST(
   if (!product) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json({ product: serializeProduct(product) });
+  return NextResponse.json({
+    product: serializeProduct(product),
+    errors: result.errors,
+  });
 }
