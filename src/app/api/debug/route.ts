@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { amazonProvider, idealoProvider } from "@/lib/providers";
+import { amazonProvider, idealoProvider, keepaProvider } from "@/lib/providers";
 import type { ComparisonQuery } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,9 @@ export async function GET(req: Request) {
   }
 
   const amazon = await amazonProvider.fetchProduct(asin);
+  const keepaPrices = await keepaProvider
+    .debugPrices(asin)
+    .catch((e) => ({ error: String(e) }));
 
   const query: ComparisonQuery = {
     asin,
@@ -53,6 +56,7 @@ export async function GET(req: Request) {
       reviewCount: amazon.reviewCount,
       offerCountNew: amazon.offerCountNew,
     },
+    keepaPrices,
     idealo,
   });
 }

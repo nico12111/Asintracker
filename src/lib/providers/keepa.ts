@@ -19,6 +19,8 @@ interface KeepaStats {
   avg30?: number[];
   avg90?: number[];
   buyBoxPrice?: number;
+  buyBoxShipping?: number;
+  buyBoxIsUsed?: boolean;
   salesRankDrops30?: number;
   salesRankDrops90?: number;
 }
@@ -49,9 +51,14 @@ function firstImageUrl(imagesCSV?: string): string | null {
 }
 
 /** Pick a price from a Keepa price array: Buy Box (18) → Amazon (0) → New (1). */
+/**
+ * Keepa price-type indices: 0 = AMAZON (Amazon's own offer), 1 = NEW
+ * (cheapest 3rd-party new, excl. shipping), 18 = BUY_BOX_SHIPPING (buy box
+ * landed price incl. shipping). Prefer Amazon's own price, then the buy box.
+ */
 function pickFromArray(arr?: number[]): number | null {
   if (!Array.isArray(arr)) return null;
-  for (const idx of [18, 0, 1]) {
+  for (const idx of [0, 18, 1]) {
     const v = arr[idx];
     if (typeof v === "number" && v > 0) return v;
   }
@@ -60,7 +67,13 @@ function pickFromArray(arr?: number[]): number | null {
 
 function pickPriceCents(stats?: KeepaStats): number | null {
   if (!stats) return null;
-  if (typeof stats.buyBoxPrice === "number" && stats.buyBoxPrice > 0) {
+  // The stats buy box price matches what a customer sees — but only when it
+  // is a NEW buy box; a used buy box would report a misleadingly low price.
+  if (
+    typeof stats.buyBoxPrice === "number" &&
+    stats.buyBoxPrice > 0 &&
+    stats.buyBoxIsUsed !== true
+  ) {
     return stats.buyBoxPrice;
   }
   return pickFromArray(stats.current);
@@ -99,26 +112,7 @@ class KeepaProvider implements AmazonProvider {
       return this.mockProduct(asin);
     }
 
-    const url = new URL("https://api.keepa.com/product");
-    url.searchParams.set("key", env.keepa.apiKey);
-    url.searchParams.set("domain", env.keepa.domain);
-    url.searchParams.set("asin", asin);
-    // A day interval makes Keepa include avg30/avg90 + salesRankDrops30/90.
-    url.searchParams.set("stats", "90");
-    url.searchParams.set("buybox", "1");
-    // Include rating & review-count history so stats.current[16]/[17] are set.
-    url.searchParams.set("rating", "1");
-
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      throw new Error(`Keepa request failed: ${res.status} ${res.statusText}`);
-    }
-    const data = (await res.json()) as KeepaResponse;
-    if (data.error?.message) {
-      throw new Error(`Keepa error: ${data.error.message}`);
-    }
-
-    const product = data.products?.[0];
+    const product = await this.fetchRawProduct(asin);
     if (!product) {
       return {
         asin,
@@ -172,6 +166,49 @@ class KeepaProvider implements AmazonProvider {
       reviewCount,
       offerCountNew,
       mock: false,
+    };
+  }
+
+  /** Raw Keepa product (or null) — also used by /api/debug diagnostics. */
+  async fetchRawProduct(asin: string): Promise<KeepaProduct | null> {
+    const url = new URL("https://api.keepa.com/product");
+    url.searchParams.set("key", env.keepa.apiKey);
+    url.searchParams.set("domain", env.keepa.domain);
+    url.searchParams.set("asin", asin);
+    // A day interval makes Keepa include avg30/avg90 + salesRankDrops30/90.
+    url.searchParams.set("stats", "90");
+    url.searchParams.set("buybox", "1");
+    // Include rating & review-count history so stats.current[16]/[17] are set.
+    url.searchParams.set("rating", "1");
+
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error(`Keepa request failed: ${res.status} ${res.statusText}`);
+    }
+    const data = (await res.json()) as KeepaResponse;
+    if (data.error?.message) {
+      throw new Error(`Keepa error: ${data.error.message}`);
+    }
+    return data.products?.[0] ?? null;
+  }
+
+  /** Raw price fields for diagnostics: which Keepa value we pick and why. */
+  async debugPrices(asin: string): Promise<unknown> {
+    if (!this.enabled) return { enabled: false };
+    const p = await this.fetchRawProduct(asin);
+    if (!p) return { found: false };
+    const s = p.stats;
+    return {
+      picked: pickPriceCents(s),
+      buyBoxPrice: s?.buyBoxPrice ?? null,
+      buyBoxShipping: s?.buyBoxShipping ?? null,
+      buyBoxIsUsed: s?.buyBoxIsUsed ?? null,
+      current_AMAZON_0: s?.current?.[0] ?? null,
+      current_NEW_1: s?.current?.[1] ?? null,
+      current_BUYBOX_SHIPPING_18: s?.current?.[18] ?? null,
+      avg30_AMAZON_0: s?.avg30?.[0] ?? null,
+      avg30_NEW_1: s?.avg30?.[1] ?? null,
+      avg30_BUYBOX_18: s?.avg30?.[18] ?? null,
     };
   }
 
