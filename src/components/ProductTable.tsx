@@ -196,7 +196,7 @@ export function ProductTable({
       );
     } else if (!foundOffer) {
       setNotice(
-        "idealo: kein Angebot gefunden (Produkt evtl. nicht auf idealo gelistet – ggf. GTIN per „+ GTIN" setzen).",
+        "idealo: kein Angebot gefunden (Produkt evtl. nicht auf idealo gelistet – ggf. GTIN über '+ GTIN' setzen).",
       );
     } else {
       setNotice(null);
