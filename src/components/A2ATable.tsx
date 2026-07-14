@@ -132,14 +132,17 @@ export function A2ATable({
     const ids = products.map((p) => p.id);
     startTransition(async () => {
       setNotice(`Aktualisiere DE + EU-Preise (0/${ids.length})…`);
-      await refreshIdsInBatches(ids, async (done, total) => {
+      const errors = await refreshIdsInBatches(ids, async (done, total) => {
         await reload();
-        setNotice(
-          done < total
-            ? `Aktualisiere DE + EU-Preise (${done}/${total})…`
-            : `Alle ${total} Produkte aktualisiert.`,
-        );
+        if (done < total) {
+          setNotice(`Aktualisiere DE + EU-Preise (${done}/${total})…`);
+        }
       });
+      setNotice(
+        errors.length
+          ? `⚠ Teilweise fehlgeschlagen: ${errors.join(" · ")}`
+          : `Alle ${ids.length} Produkte aktualisiert.`,
+      );
       router.refresh();
     });
   }

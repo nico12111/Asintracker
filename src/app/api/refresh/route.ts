@@ -26,6 +26,8 @@ export async function POST(req: Request) {
           await prisma.product.findMany({ select: { id: true } })
         ).map((p) => p.id);
 
-  await refreshProducts(targets, { comparison });
-  return NextResponse.json({ refreshed: targets.length });
+  const result = await refreshProducts(targets, { comparison });
+  // Deduplicate messages so the UI can show a single concise warning.
+  const messages = [...new Set(result.errors.map((e) => e.message))];
+  return NextResponse.json({ refreshed: targets.length, errors: messages });
 }

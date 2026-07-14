@@ -24,6 +24,7 @@ export async function GET(req: Request) {
   const keepaPrices = await keepaProvider
     .debugPrices(asin)
     .catch((e) => ({ error: String(e) }));
+  const keepaTokens = await keepaProvider.tokenStatus().catch(() => null);
 
   const query: ComparisonQuery = {
     asin,
@@ -58,6 +59,7 @@ export async function GET(req: Request) {
       offerCountNew: amazon.offerCountNew,
     },
     keepaPrices,
+    keepaTokens,
     idealo,
   });
 }

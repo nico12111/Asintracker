@@ -57,11 +57,21 @@ export async function refreshProduct(
     const [amazon, euPrices] = await Promise.all([
       amazonProvider.fetchProduct(product.asin),
       Promise.all(
-        EU_MARKETS.map(([market, domain]) =>
-          keepaProvider
-            .fetchDomainPriceCents(product.asin, domain, market)
-            .catch(() => null),
-        ),
+        EU_MARKETS.map(async ([market, domain]) => {
+          try {
+            return await keepaProvider.fetchDomainPriceCents(
+              product.asin,
+              domain,
+              market,
+            );
+          } catch (err) {
+            errors.push({
+              source: `amazon-${market}`,
+              message: String((err as Error).message ?? err),
+            });
+            return null;
+          }
+        }),
       ),
     ]);
     const [esPrice, frPrice, itPrice] = euPrices;
@@ -87,9 +97,11 @@ export async function refreshProduct(
         rating: amazon.rating ?? product.rating,
         reviewCount: amazon.reviewCount ?? product.reviewCount,
         offerCountNew: amazon.offerCountNew ?? product.offerCountNew,
-        amazonEsCents: esPrice,
-        amazonFrCents: frPrice,
-        amazonItCents: itPrice,
+        // Keep the previous value when a lookup failed (null), so a token
+        // shortage doesn't wipe already-known EU prices.
+        amazonEsCents: esPrice ?? product.amazonEsCents,
+        amazonFrCents: frPrice ?? product.amazonFrCents,
+        amazonItCents: itPrice ?? product.amazonItCents,
         euPricesAt: new Date(),
         lastRefreshedAt: new Date(),
       },
@@ -190,8 +202,11 @@ export async function refreshProduct(
 export async function refreshProducts(
   productIds: string[],
   options: RefreshOptions = {},
-): Promise<void> {
+): Promise<RefreshResult> {
+  const errors: RefreshResult["errors"] = [];
   for (const id of productIds) {
-    await refreshProduct(id, options);
+    const result = await refreshProduct(id, options);
+    errors.push(...result.errors);
   }
+  return { errors };
 }

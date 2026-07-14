@@ -47,6 +47,8 @@ interface KeepaResponse {
   error?: { message?: string };
 }
 
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** Amazon image URL from either the legacy imagesCSV or the new images array. */
 function firstImageUrl(product: KeepaProduct): string | null {
   const fromCsv = product.imagesCSV?.split(",")[0]?.trim();
@@ -177,8 +179,42 @@ class KeepaProvider implements AmazonProvider {
   }
 
   /**
+   * GET against the Keepa API with token-bucket handling: when Keepa reports
+   * "not enough tokens" (429), wait for the refill once and retry; if it
+   * still fails, throw a clear error so the UI can show it.
+   */
+  private async keepaGet(url: URL): Promise<KeepaResponse> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(url, { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as KeepaResponse & {
+        tokensLeft?: number;
+        refillIn?: number;
+      };
+      if (res.status === 429) {
+        if (attempt === 0) {
+          const wait = Math.min(Number(data.refillIn) || 6000, 15000);
+          await sleepMs(wait);
+          continue;
+        }
+        throw new Error(
+          "Keepa-Tokens aufgebraucht – kurz warten, dann restliche Produkte erneut aktualisieren",
+        );
+      }
+      if (!res.ok) {
+        throw new Error(`Keepa request failed: ${res.status} ${res.statusText}`);
+      }
+      if (data.error?.message) {
+        throw new Error(`Keepa error: ${data.error.message}`);
+      }
+      return data;
+    }
+    throw new Error("Keepa request failed");
+  }
+
+  /**
    * Current price of the same ASIN on another Amazon marketplace (for A2A
-   * flips). Keepa domain ids: 3=de, 4=fr, 8=it, 9=es. Lightweight request.
+   * flips). Keepa domain ids: 3=de, 4=fr, 8=it, 9=es. Cheapest possible
+   * request (no buybox/rating) to conserve Keepa tokens: 1 token per call.
    */
   async fetchDomainPriceCents(
     asin: string,
@@ -192,14 +228,20 @@ class KeepaProvider implements AmazonProvider {
     url.searchParams.set("domain", domain);
     url.searchParams.set("asin", asin);
     url.searchParams.set("stats", "1");
-    url.searchParams.set("buybox", "1");
 
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const data = (await res.json()) as KeepaResponse;
+    const data = await this.keepaGet(url);
     const product = data.products?.[0];
     if (!product) return null;
     return pickPriceCents(product.stats);
+  }
+
+  /** Current token balance (free request) — for diagnostics. */
+  async tokenStatus(): Promise<unknown> {
+    if (!this.enabled) return { enabled: false };
+    const url = new URL("https://api.keepa.com/token");
+    url.searchParams.set("key", env.keepa.apiKey);
+    const res = await fetch(url, { cache: "no-store" });
+    return res.json().catch(() => null);
   }
 
   /** Raw Keepa product (or null) — also used by /api/debug diagnostics. */
@@ -214,14 +256,7 @@ class KeepaProvider implements AmazonProvider {
     // Include rating & review-count history so stats.current[16]/[17] are set.
     url.searchParams.set("rating", "1");
 
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      throw new Error(`Keepa request failed: ${res.status} ${res.statusText}`);
-    }
-    const data = (await res.json()) as KeepaResponse;
-    if (data.error?.message) {
-      throw new Error(`Keepa error: ${data.error.message}`);
-    }
+    const data = await this.keepaGet(url);
     return data.products?.[0] ?? null;
   }
 

@@ -263,18 +263,21 @@ export function ProductTable({
     const label = comparison ? "idealo" : "Amazon";
     startTransition(async () => {
       setNotice(`Aktualisiere ${label}-Preise (0/${ids.length})…`);
-      await refreshIdsInBatches(
+      const errors = await refreshIdsInBatches(
         ids,
         async (done, total) => {
           await reload();
-          setNotice(
-            done < total
-              ? `Aktualisiere ${label}-Preise (${done}/${total})…`
-              : `${total} Produkt(e) aktualisiert (${label}).`,
-          );
+          if (done < total) {
+            setNotice(`Aktualisiere ${label}-Preise (${done}/${total})…`);
+          }
         },
         4,
         comparison,
+      );
+      setNotice(
+        errors.length
+          ? `⚠ Teilweise fehlgeschlagen: ${errors.join(" · ")}`
+          : `${ids.length} Produkt(e) aktualisiert (${label}).`,
       );
       router.refresh();
     });
