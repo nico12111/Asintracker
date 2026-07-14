@@ -6,6 +6,7 @@ import {
   mockEan,
   mockCategory,
   mockSalesRank,
+  mockMarketPriceCents,
 } from "./mock";
 
 /**
@@ -173,6 +174,32 @@ class KeepaProvider implements AmazonProvider {
       offerCountNew,
       mock: false,
     };
+  }
+
+  /**
+   * Current price of the same ASIN on another Amazon marketplace (for A2A
+   * flips). Keepa domain ids: 3=de, 4=fr, 8=it, 9=es. Lightweight request.
+   */
+  async fetchDomainPriceCents(
+    asin: string,
+    domain: string,
+    market: string,
+  ): Promise<number | null> {
+    if (!this.enabled) return mockMarketPriceCents(asin, market);
+
+    const url = new URL("https://api.keepa.com/product");
+    url.searchParams.set("key", env.keepa.apiKey);
+    url.searchParams.set("domain", domain);
+    url.searchParams.set("asin", asin);
+    url.searchParams.set("stats", "1");
+    url.searchParams.set("buybox", "1");
+
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as KeepaResponse;
+    const product = data.products?.[0];
+    if (!product) return null;
+    return pickPriceCents(product.stats);
   }
 
   /** Raw Keepa product (or null) — also used by /api/debug diagnostics. */

@@ -31,6 +31,12 @@ model Product {
   /// User-provided GTIN/EAN override, used first when matching on idealo.
   manualEan String?
 
+  /// Current Amazon price on other EU marketplaces (cents) for A2A flips.
+  amazonEsCents Int?
+  amazonFrCents Int?
+  amazonItCents Int?
+  euPricesAt    DateTime?
+
   /// Current Amazon Buy-Box / sell price in cents (EUR). null = unknown.
   amazonPriceCents Int?
   /// 30-day / 90-day average Amazon Buy-Box/sell price in cents.

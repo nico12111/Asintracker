@@ -77,3 +77,10 @@ export function mockCategory(asin: string): string {
 export function mockSalesRank(asin: string): number {
   return 200 + (hash(asin + "bsr") % 99800);
 }
+
+/** Stable mock price for the same product on another Amazon marketplace. */
+export function mockMarketPriceCents(asin: string, market: string): number {
+  const base = mockAmazonPriceCents(asin);
+  const factor = 0.78 + seededUnit(`${asin}:amz:${market}`) * 0.35;
+  return Math.max(199, Math.round((base * factor) / 10) * 10 - 1);
+}

@@ -36,6 +36,10 @@ export interface ProductDTO {
   amazonPriceCents: number | null;
   amazonAvg30Cents: number | null;
   amazonAvg90Cents: number | null;
+  /** Same ASIN on other EU marketplaces (A2A flips). */
+  amazonEsCents: number | null;
+  amazonFrCents: number | null;
+  amazonItCents: number | null;
   rating: number | null;
   reviewCount: number | null;
   offerCountNew: number | null;
@@ -88,6 +92,9 @@ export function serializeProduct(product: ProductWithOffers): ProductDTO {
     amazonPriceCents: product.amazonPriceCents,
     amazonAvg30Cents: product.amazonAvg30Cents,
     amazonAvg90Cents: product.amazonAvg90Cents,
+    amazonEsCents: product.amazonEsCents,
+    amazonFrCents: product.amazonFrCents,
+    amazonItCents: product.amazonItCents,
     rating: product.rating,
     reviewCount: product.reviewCount,
     offerCountNew: product.offerCountNew,

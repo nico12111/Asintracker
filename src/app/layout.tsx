@@ -30,7 +30,13 @@ export default function RootLayout({
                   href="/"
                   className="text-slate-300 hover:text-emerald-400"
                 >
-                  Dashboard
+                  idealo
+                </Link>
+                <Link
+                  href="/a2a"
+                  className="text-slate-300 hover:text-orange-400"
+                >
+                  A2A Flips
                 </Link>
                 <Link
                   href="/upload"

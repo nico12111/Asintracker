@@ -1,6 +1,17 @@
 import { prisma } from "./db";
-import { amazonProvider, comparisonProviders } from "./providers";
+import {
+  amazonProvider,
+  comparisonProviders,
+  keepaProvider,
+} from "./providers";
 import type { ComparisonQuery } from "./types";
+
+/** EU marketplaces checked for A2A flips: market key -> Keepa domain id. */
+const EU_MARKETS = [
+  ["es", "9"],
+  ["fr", "4"],
+  ["it", "8"],
+] as const;
 
 export interface RefreshOptions {
   /**
@@ -42,7 +53,18 @@ export async function refreshProduct(
   let title = product.title;
   let brand = product.brand;
   try {
-    const amazon = await amazonProvider.fetchProduct(product.asin);
+    // Fetch the DE product data and the ES/FR/IT prices (A2A) in parallel.
+    const [amazon, euPrices] = await Promise.all([
+      amazonProvider.fetchProduct(product.asin),
+      Promise.all(
+        EU_MARKETS.map(([market, domain]) =>
+          keepaProvider
+            .fetchDomainPriceCents(product.asin, domain, market)
+            .catch(() => null),
+        ),
+      ),
+    ]);
+    const [esPrice, frPrice, itPrice] = euPrices;
     ean = amazon.ean ?? ean;
     keepaEans = amazon.eans;
     title = amazon.title ?? title;
@@ -65,6 +87,10 @@ export async function refreshProduct(
         rating: amazon.rating ?? product.rating,
         reviewCount: amazon.reviewCount ?? product.reviewCount,
         offerCountNew: amazon.offerCountNew ?? product.offerCountNew,
+        amazonEsCents: esPrice,
+        amazonFrCents: frPrice,
+        amazonItCents: itPrice,
+        euPricesAt: new Date(),
         lastRefreshedAt: new Date(),
       },
     });

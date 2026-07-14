@@ -10,6 +10,8 @@ export interface MarginSettings {
   referralFeePct: number;
   fulfillmentEur: number;
   minRoiPct: number;
+  /** Inbound shipping ES/FR/IT -> DE per unit (A2A flips), in EUR. */
+  a2aShipEur: number;
 }
 
 const STORAGE_KEY = "asintracker.margin";
