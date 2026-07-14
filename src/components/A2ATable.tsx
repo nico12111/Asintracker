@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProductDTO } from "@/lib/serialize";
 import { computeMargin, formatEuro, formatPct } from "@/lib/margin";
+import { refreshIdsInBatches } from "@/lib/client-refresh";
 import type { MarginSettings } from "./ProductTable";
 
 const STORAGE_KEY = "asintracker.margin";
@@ -39,6 +40,7 @@ export function A2ATable({
   const [search, setSearch] = useState("");
   const [onlyOpportunities, setOnlyOpportunities] = useState(false);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [isPending, startTransition] = useTransition();
@@ -127,13 +129,17 @@ export function A2ATable({
   }
 
   function refreshAll() {
+    const ids = products.map((p) => p.id);
     startTransition(async () => {
-      await fetch("/api/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+      setNotice(`Aktualisiere DE + EU-Preise (0/${ids.length})…`);
+      await refreshIdsInBatches(ids, async (done, total) => {
+        await reload();
+        setNotice(
+          done < total
+            ? `Aktualisiere DE + EU-Preise (${done}/${total})…`
+            : `Alle ${total} Produkte aktualisiert.`,
+        );
       });
-      await reload();
       router.refresh();
     });
   }
@@ -187,6 +193,12 @@ export function A2ATable({
           {isPending ? "Aktualisiere…" : "Preise aktualisieren"}
         </button>
       </div>
+
+      {notice && (
+        <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300">
+          {notice}
+        </div>
+      )}
 
       {showSettings && (
         <div className="grid gap-4 rounded-xl border border-slate-800 bg-slate-900 p-4 sm:grid-cols-4">

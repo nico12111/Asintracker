@@ -260,13 +260,22 @@ export function ProductTable({
 
   function refreshSelected(comparison = false) {
     const ids = selected.size > 0 ? [...selected] : products.map((p) => p.id);
+    const label = comparison ? "idealo" : "Amazon";
     startTransition(async () => {
-      await fetch("/api/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, comparison }),
-      });
-      await reload();
+      setNotice(`Aktualisiere ${label}-Preise (0/${ids.length})…`);
+      await refreshIdsInBatches(
+        ids,
+        async (done, total) => {
+          await reload();
+          setNotice(
+            done < total
+              ? `Aktualisiere ${label}-Preise (${done}/${total})…`
+              : `${total} Produkt(e) aktualisiert (${label}).`,
+          );
+        },
+        4,
+        comparison,
+      );
       router.refresh();
     });
   }

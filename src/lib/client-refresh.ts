@@ -8,15 +8,18 @@
 export async function refreshIdsInBatches(
   ids: string[],
   onBatchDone?: (done: number, total: number) => Promise<void> | void,
-  batchSize = 5,
+  batchSize = 4,
+  comparison = false,
 ): Promise<void> {
-  for (let i = 0; i < ids.length; i += batchSize) {
-    const chunk = ids.slice(i, i + batchSize);
+  // idealo lookups take up to ~30s each — keep one per request.
+  const size = comparison ? 1 : batchSize;
+  for (let i = 0; i < ids.length; i += size) {
+    const chunk = ids.slice(i, i + size);
     await fetch("/api/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: chunk }),
+      body: JSON.stringify({ ids: chunk, comparison }),
     }).catch(() => null);
-    await onBatchDone?.(Math.min(i + batchSize, ids.length), ids.length);
+    await onBatchDone?.(Math.min(i + size, ids.length), ids.length);
   }
 }
