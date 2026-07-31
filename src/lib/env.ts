@@ -33,6 +33,20 @@ export const env = {
       return this.apiUrl.length > 0;
     },
   },
+  /**
+   * Generic web-scraping proxy (ScraperAPI / Zyte / Scrapfly style). We send a
+   * target URL, the service fetches it over residential IPs and returns HTML.
+   * Configure a template with {url} where the (encoded) target URL goes.
+   * Examples:
+   *   ScraperAPI: http://api.scraperapi.com?api_key=KEY&url={url}
+   *   Scrapfly:   https://api.scrapfly.io/scrape?key=KEY&url={url}
+   */
+  scraper: {
+    urlTemplate: process.env.SCRAPER_API_TEMPLATE?.trim() || "",
+    get enabled() {
+      return this.urlTemplate.includes("{url}");
+    },
+  },
   margin: {
     referralFeePct: num(process.env.DEFAULT_REFERRAL_FEE_PCT, 15),
     fulfillmentFeeCents: Math.round(

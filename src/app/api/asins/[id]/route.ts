@@ -45,7 +45,7 @@ export async function PATCH(
   const result = await refreshProduct(params.id, { comparison: true });
   const product = await prisma.product.findUnique({
     where: { id: params.id },
-    include: { offers: true },
+    include: { offers: true, shopOffers: true },
   });
   if (!product) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -65,12 +65,13 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } },
 ) {
-  const comparison =
-    new URL(req.url).searchParams.get("comparison") === "1";
-  const result = await refreshProduct(params.id, { comparison });
+  const sp = new URL(req.url).searchParams;
+  const comparison = sp.get("comparison") === "1";
+  const shops = sp.get("shops") === "1";
+  const result = await refreshProduct(params.id, { comparison, shops });
   const product = await prisma.product.findUnique({
     where: { id: params.id },
-    include: { offers: true },
+    include: { offers: true, shopOffers: true },
   });
   if (!product) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

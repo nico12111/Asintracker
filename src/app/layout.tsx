@@ -39,6 +39,12 @@ export default function RootLayout({
                   A2A Flips
                 </Link>
                 <Link
+                  href="/shops"
+                  className="text-slate-300 hover:text-emerald-400"
+                >
+                  Shops
+                </Link>
+                <Link
                   href="/upload"
                   className="rounded-lg bg-emerald-500 px-3 py-1.5 font-medium text-slate-950 hover:bg-emerald-400"
                 >

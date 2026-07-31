@@ -60,10 +60,29 @@ model Product {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  offers    Offer[]
-  snapshots PriceSnapshot[]
+  offers     Offer[]
+  shopOffers ShopOffer[]
+  snapshots  PriceSnapshot[]
 
   @@index([asin])
+}
+
+/// Cheapest offer found at a specific online shop via the scraping provider.
+model ShopOffer {
+  id        String   @id @default(cuid())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+
+  shopKey    String
+  shopName   String
+  priceCents Int
+  url        String?
+
+  capturedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([productId, shopKey])
+  @@index([shopKey])
 }
 
 /// The current best offer from a comparison source (one row per source per product).

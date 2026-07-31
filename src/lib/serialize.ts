@@ -1,4 +1,4 @@
-import type { Offer, Product } from "@prisma/client";
+import type { Offer, Product, ShopOffer } from "@prisma/client";
 import { computeMargin, type MarginResult } from "./margin";
 import { env } from "./env";
 import type { PriceSource } from "./types";
@@ -10,7 +10,10 @@ function sourceEnabled(source: string): boolean {
   return false;
 }
 
-export type ProductWithOffers = Product & { offers: Offer[] };
+export type ProductWithOffers = Product & {
+  offers: Offer[];
+  shopOffers?: ShopOffer[];
+};
 
 export interface OfferDTO {
   source: PriceSource;
@@ -19,6 +22,13 @@ export interface OfferDTO {
   inStock: boolean;
   matchedName: string | null;
   capturedAt: string;
+}
+
+export interface ShopOfferDTO {
+  shopKey: string;
+  shopName: string;
+  priceCents: number;
+  url: string | null;
 }
 
 export interface ProductDTO {
@@ -46,6 +56,9 @@ export interface ProductDTO {
   offers: OfferDTO[];
   /** Cheapest in-stock comparison offer. */
   bestOffer: OfferDTO | null;
+  /** Prices scraped from online shops (MediaMarkt/Euronics/…). */
+  shopOffers: ShopOfferDTO[];
+  bestShopOffer: ShopOfferDTO | null;
   margin: MarginResult;
   lastRefreshedAt: string | null;
 }
@@ -69,6 +82,16 @@ export function serializeProduct(product: ProductWithOffers): ProductDTO {
     inStock.length > 0
       ? inStock.reduce((a, b) => (b.priceCents < a.priceCents ? b : a))
       : null;
+
+  const shopOffers: ShopOfferDTO[] = (product.shopOffers ?? [])
+    .map((s) => ({
+      shopKey: s.shopKey,
+      shopName: s.shopName,
+      priceCents: s.priceCents,
+      url: s.url,
+    }))
+    .sort((a, b) => a.priceCents - b.priceCents);
+  const bestShopOffer = shopOffers[0] ?? null;
 
   const margin = computeMargin({
     amazonPriceCents: product.amazonPriceCents,
@@ -100,6 +123,8 @@ export function serializeProduct(product: ProductWithOffers): ProductDTO {
     offerCountNew: product.offerCountNew,
     offers,
     bestOffer,
+    shopOffers,
+    bestShopOffer,
     margin,
     lastRefreshedAt: product.lastRefreshedAt?.toISOString() ?? null,
   };

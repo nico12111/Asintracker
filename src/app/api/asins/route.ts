@@ -15,7 +15,7 @@ const bodySchema = z.object({
 /** GET /api/asins — all tracked products with computed margins. */
 export async function GET() {
   const products = await prisma.product.findMany({
-    include: { offers: true },
+    include: { offers: true, shopOffers: true },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json({ products: products.map(serializeProduct) });

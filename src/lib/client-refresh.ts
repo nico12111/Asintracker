@@ -10,9 +10,10 @@ export async function refreshIdsInBatches(
   onBatchDone?: (done: number, total: number) => Promise<void> | void,
   batchSize = 4,
   comparison = false,
+  shops = false,
 ): Promise<string[]> {
-  // idealo lookups take up to ~30s each — keep one per request.
-  const size = comparison ? 1 : batchSize;
+  // idealo / shop lookups are slow — keep one product per request.
+  const size = comparison || shops ? 1 : batchSize;
   const errors = new Set<string>();
   for (let i = 0; i < ids.length; i += size) {
     const chunk = ids.slice(i, i + size);
@@ -20,7 +21,7 @@ export async function refreshIdsInBatches(
       const res = await fetch("/api/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: chunk, comparison }),
+        body: JSON.stringify({ ids: chunk, comparison, shops }),
       });
       const data = await res.json().catch(() => ({}));
       for (const msg of data.errors ?? []) errors.add(String(msg));

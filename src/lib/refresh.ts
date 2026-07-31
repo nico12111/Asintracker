@@ -4,6 +4,7 @@ import {
   comparisonProviders,
   keepaProvider,
 } from "./providers";
+import { shopsProvider } from "./providers/shops";
 import type { ComparisonQuery } from "./types";
 
 /** EU marketplaces checked for A2A flips: market key -> Keepa domain id. */
@@ -20,6 +21,8 @@ export interface RefreshOptions {
    * or an explicit idealo refresh.
    */
   comparison?: boolean;
+  /** Whether to scrape the shop registry (uses the scraping-service budget). */
+  shops?: boolean;
 }
 
 export interface RefreshResult {
@@ -121,8 +124,8 @@ export async function refreshProduct(
     errors.push({ source: "keepa", message: String((err as Error).message ?? err) });
   }
 
-  // 2) Comparison sources (only when explicitly requested — saves API quota).
-  if (!options.comparison) return { errors };
+  // 2) Comparison / shop sources run only when explicitly requested.
+  if (!options.comparison && !options.shops) return { errors };
 
   // Manual GTIN override is tried first, then Keepa's.
   const eans = [product.manualEan, ean, ...keepaEans].filter(
@@ -136,6 +139,50 @@ export async function refreshProduct(
     brand,
     idealoItemId,
   };
+
+  // 3) Shop scraping (MediaMarkt/Euronics/… via the scraping service).
+  if (options.shops) {
+    try {
+      const shopOffers = await shopsProvider.findOffers(query);
+      const seen = new Set(shopOffers.map((o) => o.shopKey));
+      await Promise.all(
+        shopOffers.map((o) =>
+          prisma.shopOffer.upsert({
+            where: {
+              productId_shopKey: { productId: product.id, shopKey: o.shopKey },
+            },
+            create: {
+              productId: product.id,
+              shopKey: o.shopKey,
+              shopName: o.shopName,
+              priceCents: o.priceCents,
+              url: o.url,
+            },
+            update: {
+              shopName: o.shopName,
+              priceCents: o.priceCents,
+              url: o.url,
+              capturedAt: new Date(),
+            },
+          }),
+        ),
+      );
+      // Drop shops that no longer return this product — but only when we got
+      // results, so a fully blocked/empty scrape doesn't wipe known prices.
+      if (seen.size > 0) {
+        await prisma.shopOffer.deleteMany({
+          where: { productId: product.id, shopKey: { notIn: [...seen] } },
+        });
+      }
+    } catch (err) {
+      errors.push({
+        source: "shops",
+        message: String((err as Error).message ?? err),
+      });
+    }
+  }
+
+  if (!options.comparison) return { errors };
 
   await Promise.all(
     comparisonProviders.map(async (provider) => {
